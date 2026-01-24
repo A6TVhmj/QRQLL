@@ -158,7 +158,7 @@ class MockResourceManager:
             base_path = sys._MEIPASS
         except Exception:
             # 正常的开发环境
-            base_path = os.path.abspath(".")
+            base_path = os.path.dirname(os.path.abspath(__file__))
         
         return os.path.join(base_path, relative_path)
     def set_app_icon(self):
@@ -431,4 +431,5 @@ if __name__ == "__main__":
     time.sleep(1)
     root = ttk.Window(themename="litera")  # 可以选择不同的主题：cosmo, flatly, litera, materia, minty, lumen, etc.
     app = MockResourceManager(root)
+
     root.mainloop()
