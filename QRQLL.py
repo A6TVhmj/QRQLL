@@ -3,39 +3,41 @@ import shutil
 import sys
 import threading
 import time
-import tkinter as tk
 from datetime import datetime
 from typing import Dict, List, Tuple
-from tkinter import filedialog, messagebox
-
+from tkinter import filedialog, messagebox, StringVar
 import ttkbootstrap as ttk
 from flask import Flask, jsonify, request, send_from_directory
+from PIL import Image
+from PIL.ImageTk import PhotoImage
 from ttkbootstrap.constants import *
 
 # Flask应用部分
 app = Flask(__name__)
-BASE_DIR = os.path.dirname(__file__)
-RESOURCES_DIR = os.path.join(BASE_DIR, "resources")
+def get_app_dir():
+    """获取应用真实目录（兼容开发/打包环境）"""
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+APP_DIR = get_app_dir()  # 直接获取路径
+RESOURCES_DIR = os.path.join(APP_DIR, "resources")
 
 # 确保资源目录存在
 if not os.path.exists(RESOURCES_DIR):
     os.makedirs(RESOURCES_DIR)
     print(f"已创建目录: {RESOURCES_DIR}")
-
 def ok(result=None, message: str = ""):
     return jsonify({"status": 0, "message": message, "result": result if result is not None else {}})
 
 def list_resources() -> List[str]:
-    files: List[str] = []
-    if not os.path.isdir(RESOURCES_DIR):
-        print("Resources directory does not exist:", RESOURCES_DIR)
-        return files
+    files = []
     for root, _, filenames in os.walk(RESOURCES_DIR):
         for name in filenames:
             abs_path = os.path.join(root, name)
             rel = os.path.relpath(abs_path, RESOURCES_DIR).replace("\\", "/")
             files.append(rel)
-    return files
+    return sorted(files)
 
 def get_param(name: str, default: str = "") -> str:
     if request.args.get(name) is not None:
@@ -147,26 +149,23 @@ class MockResourceManager:
         self.set_app_icon()
         # 设置目标文件夹路径
         self.target_dir = RESOURCES_DIR
-
         self.create_widgets()
         self.refresh_file_list()
         self.check_server_status()
     def get_resource_path(self, relative_path):
         """获取资源的绝对路径，支持开发环境和打包后的环境"""
         try:
-            # PyInstaller创建临时文件夹，将路径存储在_MEIPASS中
-            base_path = sys._MEIPASS
+            base_path = sys._MEIPASS # PyInstaller创建临时文件夹，将路径存储在_MEIPASS中
         except Exception:
-            # 正常的开发环境
             base_path = os.path.dirname(os.path.abspath(__file__))
-        
         return os.path.join(base_path, relative_path)
     def set_app_icon(self):
         """设置应用图标，支持开发和打包环境"""
         try:
             icon_path = self.get_resource_path("icon.png")
+            print(f"图标路径: {icon_path}")
             if os.path.exists(icon_path):
-                self.root.iconphoto(False, tk.PhotoImage(file=icon_path))
+                self.root.iconphoto(False, PhotoImage(Image.open(icon_path)))
         except Exception as e:
             print(f"设置图标失败: {e}")
     
@@ -259,7 +258,7 @@ class MockResourceManager:
         self.tree.bind("<Double-1>", self.on_double_click)
         
         # 状态栏
-        self.status_var = tk.StringVar()
+        self.status_var = StringVar()
         self.status_var.set("就绪")
         status_bar = ttk.Label(
             main_frame,
@@ -279,13 +278,15 @@ class MockResourceManager:
         # 获取文件列表
         try:
             items = []
-            for item in os.listdir(self.target_dir):
-                item_path = os.path.join(self.target_dir, item)
-                if os.path.isdir(item_path):
-                    items.append((item, "folder", item_path))
-                else:
-                    items.append((item, "file", item_path))
-            
+            for root, dirs, files in os.walk(self.target_dir):
+                # 添加目录
+                for d in sorted(dirs):
+                    path = os.path.join(root, d)
+                    items.append((d, "folder", path))
+                # 添加文件
+                for f in sorted(files):
+                    path = os.path.join(root, f)
+                    items.append((f, "file", path))
             # 排序：文件夹在前，文件在后
             items.sort(key=lambda x: (0 if x[1] == "folder" else 1, x[0].lower()))
             
@@ -350,32 +351,35 @@ class MockResourceManager:
                 messagebox.showinfo("成功", f"成功添加 {success_count} 个文件")
     
     def delete_selected(self):
-        """删除选中的文件或文件夹"""
         selected = self.tree.selection()
-        
         if not selected:
-            messagebox.showwarning("警告", "请先选择要删除的文件或文件夹")
+            return messagebox.showwarning("警告", "请先选择文件")
+        to_delete = []
+        for item_id in selected:
+            path = self.tree.item(item_id)['tags'][0]
+            name = self.tree.item(item_id)['values'][0]
+            to_delete.append((path, name))
+
+        msg = f"确定删除 {len(to_delete)} 个项目？" if len(to_delete)>1 else f"确定删除 '{to_delete[0][1]}'？"
+        if not messagebox.askyesno("确认删除", msg + "\n此操作不可恢复！"):
             return
         
-        item = self.tree.item(selected[0])
-        file_path = self.tree.item(selected[0])['tags'][0]
-        file_name = item['values'][0]
-        
-        if messagebox.askyesno(
-            "确认删除",
-            f"确定要删除 '{file_name}' 吗？\n此操作不可恢复！"
-        ):
+        # 批量删除
+        errors = []
+        for path, name in to_delete:
             try:
-                if os.path.isdir(file_path):
-                    shutil.rmtree(file_path)
+                if os.path.isdir(path):
+                    shutil.rmtree(path)
                 else:
-                    os.remove(file_path)
-                
-                self.refresh_file_list()
-                self.status_var.set(f"已删除: {file_name}")
-                
+                    os.remove(path)
             except Exception as e:
-                messagebox.showerror("错误", f"删除失败: {e}")
+                errors.append(f"{name}: {str(e)}")
+        
+        self.refresh_file_list()
+        if errors:
+            messagebox.showerror("部分失败", "\n".join(errors))
+        else:
+            self.status_var.set(f"成功删除 {len(to_delete)} 个项目")
     def on_double_click(self, event):
         """双击打开文件或文件夹"""
         selected = self.tree.selection()
@@ -428,8 +432,6 @@ class MockResourceManager:
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=lambda: app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False), daemon=True)
     flask_thread.start()
-    time.sleep(1)
     root = ttk.Window(themename="litera")  # 可以选择不同的主题：cosmo, flatly, litera, materia, minty, lumen, etc.
     app = MockResourceManager(root)
-
     root.mainloop()
