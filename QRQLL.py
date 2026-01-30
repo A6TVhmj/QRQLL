@@ -2,7 +2,6 @@ import os
 import shutil
 import sys
 import threading
-import time
 from datetime import datetime
 from typing import Dict, List, Tuple
 from tkinter import filedialog, messagebox, StringVar
@@ -22,11 +21,9 @@ def get_app_dir():
 
 APP_DIR = get_app_dir()  # 直接获取路径
 RESOURCES_DIR = os.path.join(APP_DIR, "resources")
-
 # 确保资源目录存在
 if not os.path.exists(RESOURCES_DIR):
     os.makedirs(RESOURCES_DIR)
-    print(f"已创建目录: {RESOURCES_DIR}")
 def ok(result=None, message: str = ""):
     return jsonify({"status": 0, "message": message, "result": result if result is not None else {}})
 
@@ -77,10 +74,10 @@ def build_teacher_file_list(page_index: int, page_size: int, search_key: str = "
                 "fileName": name,
                 "shareTime": now,
                 "size": size,
-                "lessonName": "模拟课程",
+                "lessonName": "QRQLL 模拟课程",
                 "suffix": ext,
                 "fileUrl": f"resources/{rel_path}",
-                "teacherName": "本地教师",
+                "teacherName": "QRQLL 模拟教师",
             }
         )
 
@@ -97,10 +94,10 @@ def build_account(host_ip: str) -> Dict:
     return {
         "userId": "student001",
         "schoolKey": "LOCAL_SCHOOL",
-        "schoolName": "本地学校",
+        "schoolName": "QRQLL 模拟学校",
         "classroomId": "CLASSROOM001",
-        "classroomName": "本地教室",
-        "className": "本地班级",
+        "classroomName": "QRQLL 模拟教室",
+        "className": "QRQLL 模拟班级",
         "loginIp": host_ip,
         "classInSocketPort": "9000",
         "token": "mock-token",
@@ -111,7 +108,7 @@ def build_account(host_ip: str) -> Dict:
 # Flask路由
 @app.route("/qlBox-manager/getBindedSchoolInfo", methods=["POST", "GET"])
 def get_binded_school_info():
-    return ok({"schoolId": "LOCAL_SCHOOL", "schoolName": "本地学校"})
+    return ok({"schoolId": "LOCAL_SCHOOL", "schoolName": "QRQLL 模拟学校"})
 
 @app.route("/classInApp/box/auth/tokenValid", methods=["POST", "GET"])
 def token_valid():
@@ -144,7 +141,7 @@ def serve_resource(filename: str):
 class MockResourceManager:
     def __init__(self, root):
         self.root = root
-        self.root.title("Mock Server 资源管理器")
+        self.root.title("QRQLL Mock 资源管理器")
         self.root.geometry("900x600")
         self.set_app_icon()
         # 设置目标文件夹路径
@@ -163,7 +160,6 @@ class MockResourceManager:
         """设置应用图标，支持开发和打包环境"""
         try:
             icon_path = self.get_resource_path("icon.png")
-            print(f"图标路径: {icon_path}")
             if os.path.exists(icon_path):
                 self.root.iconphoto(False, PhotoImage(Image.open(icon_path)))
         except Exception as e:
@@ -185,7 +181,7 @@ class MockResourceManager:
         header_frame.pack(fill=X, pady=(0, 10))
         title_label = ttk.Label(
             header_frame, 
-            text="Mock Server 资源管理器", 
+            text="QRQLL Mock 资源管理器", 
             font=("Arial", 16, "bold")
         )
         title_label.pack(side=LEFT)
@@ -430,8 +426,8 @@ class MockResourceManager:
         return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 if __name__ == "__main__":
-    flask_thread = threading.Thread(target=lambda: app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False), daemon=True)
+    flask_thread = threading.Thread(target=lambda: app.run(host="0.0.0.0", port=80, debug=False, use_reloader=False), daemon=True)
     flask_thread.start()
-    root = ttk.Window(themename="litera")  # 可以选择不同的主题：cosmo, flatly, litera, materia, minty, lumen, etc.
+    root = ttk.Window(themename="litera")
     app = MockResourceManager(root)
     root.mainloop()
