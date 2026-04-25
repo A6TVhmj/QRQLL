@@ -10,6 +10,7 @@ requirements = python3,kivy,kivymd,flask,waitress,pyjnius,android
 orientation = portrait
 fullscreen = 0
 author = A6
+icon.filename = %(source.dir)s/icon.png
 
 #
 # Android specific
