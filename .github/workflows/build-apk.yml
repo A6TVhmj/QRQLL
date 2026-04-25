@@ -7,28 +7,15 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
+    container:
+      image: kivy/buildozer:latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.8
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.8'
-
-      - name: Install system deps
+      - name: Build with Buildozer
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y --no-install-recommends openjdk-17-jdk-headless git unzip
-
-      - name: Install buildozer
-        run: |
-          python3 -m pip install --user buildozer cython setuptools virtualenv
-
-      - name: Build APK
-        run: |
-          export PATH=$PATH:$HOME/.local/bin
-          python3 -m buildozer android debug
+          yes | buildozer android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
