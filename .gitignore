@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.buildozer/
+bin/
+.DS_Store
+*.spec.bak
+*.bat
+*.sh
+*.zip
+*.exe
+*.png
+*.jpg
+*.jpeg
