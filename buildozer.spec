@@ -6,7 +6,7 @@ package.domain = org.qrqll.mobile
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,ttf,txt,json
 version = 1.0.0
-requirements = python3,kivy,kivymd,flask,waitress,pyjnius,android
+requirements = python3,kivy,kivymd,flask==2.3.3,waitress,werkzeug==2.3.7,pyjnius,android
 orientation = portrait
 fullscreen = 0
 author = A6
