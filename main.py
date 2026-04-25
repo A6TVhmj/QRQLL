@@ -9,6 +9,29 @@ import json
 from threading import Thread
 from datetime import datetime
 
+# ============================================================
+# 渲染修复：在 Kivy 导入前强制软件渲染和兼容 GL 配置
+# 解决 hwuiTask SIGABRT / GPU 硬件渲染崩溃
+# ============================================================
+os.environ["KIVY_GL_BACKEND"] = "sdl2"
+os.environ["KIVY_WINDOW"] = "sdl2"
+os.environ["KIVY_GL_DEBUG"] = "1"
+os.environ["KIVY_GLES_LIBRARY"] = "libGLESv2.so"
+os.environ["KIVY_GLES_LIBRARY_VERSION"] = "2.0"
+
+import kivy
+kivy.Config.set("graphics", "multisamples", "0")
+kivy.Config.set("graphics", "maxfps", "30")
+kivy.Config.set("graphics", "show_fps", "0")
+kivy.Config.set("graphics", "borderless", "0")
+kivy.Config.set("graphics", "fullscreen", "0")
+
+from kivy.clock import Clock
+from kivy.lang import Builder
+from kivy.metrics import dp
+from kivy.utils import platform as kivy_platform
+from kivy.core.window import Window
+
 from kivy.clock import Clock
 from kivy.lang import Builder
 from kivy.metrics import dp
