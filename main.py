@@ -22,6 +22,19 @@ import kivy
 kivy.Config.set("graphics", "multisamples", "0")
 kivy.Config.set("graphics", "maxfps", "30")
 
+# 中文字体：Android 系统自带
+if kivy.utils.platform == "android":
+    kivy.Config.set("kivy", "default_font", [
+        "Roboto",
+        "data/fonts/DejaVuSans.ttf",
+        "/system/fonts/NotoSansCJK-Regular.ttc",
+    ])
+else:
+    kivy.Config.set("kivy", "default_font", [
+        "Roboto",
+        "data/fonts/DejaVuSans.ttf",
+    ])
+
 from kivy.clock import Clock
 from kivy.lang import Builder
 from kivy.metrics import dp

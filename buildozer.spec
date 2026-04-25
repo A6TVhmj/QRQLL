@@ -4,7 +4,7 @@ title = QRQLL Mobile
 package.name = qrqllmobile
 package.domain = org.qrqll.mobile
 source.dir = .
-source.include_exts = py,png,jpg,kv,atlas,ttf,txt,json
+source.include_exts = py,png,jpg,kv,atlas,ttf,txt,json,DroidSansFallback.ttf
 version = 1.0.0
 requirements = python3,kivy,kivymd,flask,waitress,pyjnius,android
 orientation = portrait
@@ -22,10 +22,11 @@ android.permissions = INTERNET, ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE, FOREGRO
 android.archs = arm64-v8a
 
 # 修复 hwuiTask SIGABRT 渲染崩溃 — OPPO/ColorOS GPU 兼容修复
-# 1. gradle_gl_mode=2 强制 GLES 2.0（避免手机不支持 GLES 3.0 导致崩溃）
-# 2. enable_androidx 启用 AndroidX 兼容库
-# 3. use_surface_view 使用 SurfaceView 替代 TextureView
+# gl_mode=2 强制 GLES 2.0（避免手机不支持 GLES 3.0 导致崩溃）
+# post_delay=0 禁用 SDL2 的延迟渲染，减少 hwuiTask mutex 竞争
 android.gradle_gl_mode = 2
 android.gradle_android_gl_mode = 2
-android.use_surface_view = True
 android.enable_androidx = True
+
+# SDL2 渲染优化：修复 hwuiTask mutex 崩溃（OPPO/ColorOS 特有）
+android.numeric_version = 34
