@@ -26,11 +26,14 @@ kivy.Config.set("graphics", "show_fps", "0")
 kivy.Config.set("graphics", "borderless", "0")
 kivy.Config.set("graphics", "fullscreen", "0")
 
-from kivy.clock import Clock
-from kivy.lang import Builder
-from kivy.metrics import dp
-from kivy.utils import platform as kivy_platform
-from kivy.core.window import Window
+# ============================================================
+# werkzeug 兼容性补丁：新版 werkzeug (3.x) 移除了 url_quote
+# Flask 旧版依赖它，在导入前手工补上
+# ============================================================
+import werkzeug.urls
+if not hasattr(werkzeug.urls, "url_quote"):
+    from urllib.parse import quote
+    werkzeug.urls.url_quote = quote
 
 from kivy.clock import Clock
 from kivy.lang import Builder
