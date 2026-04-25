@@ -12,7 +12,7 @@ from datetime import datetime
 from kivy.clock import Clock
 from kivy.lang import Builder
 from kivy.metrics import dp
-from kivy.utils import platform
+from kivy.utils import platform as kivy_platform
 from kivy.core.window import Window
 
 from kivymd.app import MDApp
@@ -46,6 +46,9 @@ from server import (
     get_resources_dir,
 )
 
+# Android 键盘适配
+Window.softinput_mode = "below_target"
+
 
 class QRQLLMobileApp(MDApp):
     """QRQLL Mobile 主应用"""
@@ -53,14 +56,12 @@ class QRQLLMobileApp(MDApp):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.server_started = False
-        self.resources_list = []
         self.hw_list = []
         self.dialog = None
 
     def build(self):
         self.theme_cls.primary_palette = "Blue"
         self.theme_cls.theme_style = "Light"
-        self.theme_cls.material_style = "M3"
 
         kv_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "kv", "qrqll.kv"
@@ -71,11 +72,9 @@ class QRQLLMobileApp(MDApp):
         return self._build_main_layout()
 
     def _build_main_layout(self):
-        """构建主界面"""
         bg = self.theme_cls.bg_normal
         layout = MDBoxLayout(orientation="vertical", md_bg_color=bg)
 
-        # 顶部工具栏
         toolbar = MDTopAppBar(
             title="QRQLL Mobile",
             md_bg_color=self.theme_cls.primary_color,
@@ -84,10 +83,8 @@ class QRQLLMobileApp(MDApp):
         )
         layout.add_widget(toolbar)
 
-        # 底部导航
         nav = MDBottomNavigation(panel_color=bg)
 
-        # ---- Tab 1: 资源文件 ----
         tab_res = MDBottomNavigationItem(
             name="resources",
             text="资源文件",
@@ -97,7 +94,6 @@ class QRQLLMobileApp(MDApp):
         tab_res.add_widget(self.resources_content)
         nav.add_widget(tab_res)
 
-        # ---- Tab 2: 上网配置 ----
         tab_hw = MDBottomNavigationItem(
             name="homework",
             text="上网配置",
@@ -107,7 +103,6 @@ class QRQLLMobileApp(MDApp):
         tab_hw.add_widget(self.hw_content)
         nav.add_widget(tab_hw)
 
-        # ---- Tab 3: 设置 ----
         tab_set = MDBottomNavigationItem(
             name="settings",
             text="设置",
@@ -125,7 +120,6 @@ class QRQLLMobileApp(MDApp):
     # ================================================================
 
     def _build_resources_tab(self):
-        """构建资源文件 Tab 布局"""
         box = MDBoxLayout(orientation="vertical", padding=dp(12), spacing=dp(8))
 
         btn_row = MDBoxLayout(
@@ -152,18 +146,17 @@ class QRQLLMobileApp(MDApp):
         box.add_widget(scroll)
 
         Clock.schedule_once(lambda dt: self.refresh_resources_list(), 0.5)
-
         return box
 
     def on_add_resource(self, instance):
-        """添加资源文件"""
         try:
+            if kivy_platform == "android":
+                Snackbar(text="Android 上请通过电脑传输文件到 resources 目录", duration=3).open()
+                return
             from tkinter import Tk, filedialog
             root = Tk()
             root.withdraw()
-            fpath = filedialog.askopenfilename(
-                title="选择资源文件"
-            )
+            fpath = filedialog.askopenfilename(title="选择资源文件")
             root.destroy()
             if fpath:
                 import shutil
@@ -175,12 +168,10 @@ class QRQLLMobileApp(MDApp):
             Snackbar(text=f"添加失败: {e}", duration=3).open()
 
     def on_refresh_resources(self, instance):
-        """刷新资源列表"""
         self.refresh_resources_list()
         Snackbar(text="已刷新", duration=1).open()
 
     def refresh_resources_list(self):
-        """刷新资源文件列表显示"""
         self.resources_list_widget.clear_widgets()
         res_dir = get_resources_dir()
 
@@ -191,7 +182,7 @@ class QRQLLMobileApp(MDApp):
 
         if not files:
             self.resources_list_widget.add_widget(MDLabel(
-                text="没有资源文件\n点击「添加文件」上传",
+                text="没有资源文件\n通过电脑传输文件到 resources 目录",
                 halign="center",
                 theme_text_color="Secondary",
                 size_hint_y=None,
@@ -212,7 +203,6 @@ class QRQLLMobileApp(MDApp):
             self.resources_list_widget.add_widget(item)
 
     def on_delete_resource(self, fname):
-        """删除资源文件"""
         fpath = os.path.join(get_resources_dir(), fname)
         try:
             os.remove(fpath)
@@ -226,7 +216,6 @@ class QRQLLMobileApp(MDApp):
     # ================================================================
 
     def _build_homework_tab(self):
-        """构建上网配置 Tab 布局"""
         box = MDBoxLayout(orientation="vertical", padding=dp(12), spacing=dp(8))
 
         btn_row = MDBoxLayout(
@@ -256,65 +245,59 @@ class QRQLLMobileApp(MDApp):
         self.hw_list_widget = MDList()
         scroll.add_widget(self.hw_list_widget)
         box.add_widget(scroll)
-
         Clock.schedule_once(lambda dt: self.refresh_hw_list(), 0.5)
-
         return box
 
     def on_add_homework(self, instance):
-        """添加上网配置"""
         self.show_hw_editor(None)
 
     def on_export_homework(self, instance):
-        """导出作业配置为 JSON"""
         try:
-            from kivy.utils import platform
-            if platform == "win":
-                import tkinter.filedialog as fd
-                from tkinter import Tk
-                root = Tk()
-                root.withdraw()
-                fpath = fd.asksaveasfilename(
-                    defaultextension=".json",
-                    filetypes=[("JSON files", "*.json")],
-                    initialfile="homework_config.json"
-                )
-                root.destroy()
-                if fpath:
-                    with open(fpath, "w", encoding="utf-8") as f:
-                        json.dump(HOMEWORK_DATA, f, ensure_ascii=False, indent=2)
-                    Snackbar(text=f"已导出: {os.path.basename(fpath)}", duration=3).open()
-            else:
-                Snackbar(text="导出功能仅在桌面端可用", duration=2).open()
+            if kivy_platform == "android":
+                path = os.path.join(get_resources_dir(), "homework_config.json")
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(HOMEWORK_DATA, f, ensure_ascii=False, indent=2)
+                Snackbar(text=f"已导出到 resources 目录", duration=3).open()
+                return
+            import tkinter.filedialog as fd
+            from tkinter import Tk
+            root = Tk()
+            root.withdraw()
+            fpath = fd.asksaveasfilename(
+                defaultextension=".json",
+                filetypes=[("JSON files", "*.json")],
+                initialfile="homework_config.json"
+            )
+            root.destroy()
+            if fpath:
+                with open(fpath, "w", encoding="utf-8") as f:
+                    json.dump(HOMEWORK_DATA, f, ensure_ascii=False, indent=2)
+                Snackbar(text=f"已导出", duration=3).open()
         except Exception as e:
             Snackbar(text=f"导出失败: {e}", duration=3).open()
 
     def on_import_homework(self, instance):
-        """导入作业配置 JSON"""
         try:
-            if platform == "win":
-                import tkinter.filedialog as fd
-                from tkinter import Tk
-                root = Tk()
-                root.withdraw()
-                fpath = fd.askopenfilename(
-                    filetypes=[("JSON files", "*.json")]
-                )
-                root.destroy()
-                if fpath:
-                    with open(fpath, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    HOMEWORK_DATA.clear()
-                    HOMEWORK_DATA.extend(data)
-                    self.refresh_hw_list()
-                    Snackbar(text=f"已导入 {len(data)} 项", duration=3).open()
-            else:
-                Snackbar(text="导入功能仅在桌面端可用", duration=2).open()
+            if kivy_platform == "android":
+                Snackbar(text="请通过电脑上传 JSON 到 resources 目录", duration=3).open()
+                return
+            import tkinter.filedialog as fd
+            from tkinter import Tk
+            root = Tk()
+            root.withdraw()
+            fpath = fd.askopenfilename(filetypes=[("JSON files", "*.json")])
+            root.destroy()
+            if fpath:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                HOMEWORK_DATA.clear()
+                HOMEWORK_DATA.extend(data)
+                self.refresh_hw_list()
+                Snackbar(text=f"已导入 {len(data)} 项", duration=3).open()
         except Exception as e:
             Snackbar(text=f"导入失败: {e}", duration=3).open()
 
     def refresh_hw_list(self):
-        """刷新上网配置列表"""
         self.hw_list_widget.clear_widgets()
         if not HOMEWORK_DATA:
             self.hw_list_widget.add_widget(MDLabel(
@@ -338,16 +321,14 @@ class QRQLLMobileApp(MDApp):
             self.hw_list_widget.add_widget(item)
 
     def on_edit_homework(self, idx: int):
-        """编辑上网配置"""
         hw = HOMEWORK_DATA[idx]
         self.show_hw_editor(idx, hw)
 
     # ================================================================
-    # 上网配置编辑弹窗
+    # 编辑弹窗
     # ================================================================
 
     def show_hw_editor(self, idx, hw=None):
-        """显示编辑/添加上网配置的弹窗"""
         is_new = idx is None
         hw = hw or {"name": "", "url": "", "scale": 0.5, "orientation": "landscape"}
 
@@ -433,7 +414,6 @@ class QRQLLMobileApp(MDApp):
         self._current_orientation = ori
 
     def _hw_save(self, idx, is_new, name, url, scale_str):
-        """保存上网配置"""
         if not name or not url:
             Snackbar(text="名称和 URL 不能为空", duration=2).open()
             return
@@ -465,7 +445,6 @@ class QRQLLMobileApp(MDApp):
         Snackbar(text="已保存", duration=1).open()
 
     def _hw_delete(self, idx):
-        """删除上网配置"""
         if 0 <= idx < len(HOMEWORK_DATA):
             name = HOMEWORK_DATA[idx]["name"]
             del HOMEWORK_DATA[idx]
@@ -479,7 +458,6 @@ class QRQLLMobileApp(MDApp):
     # ================================================================
 
     def _build_settings_tab(self):
-        """构建设置 Tab"""
         box = MDBoxLayout(
             orientation="vertical",
             padding=dp(16),
@@ -539,7 +517,6 @@ class QRQLLMobileApp(MDApp):
         btn_row.add_widget(self.start_btn)
         box.add_widget(btn_row)
 
-        # --- 开关设置 ---
         hw_switch_row = MDBoxLayout(
             orientation="horizontal",
             size_hint_y=None,
@@ -589,10 +566,8 @@ class QRQLLMobileApp(MDApp):
         return box
 
     def refresh_settings(self):
-        """刷新设置页面的状态"""
         running = is_server_running()
         ip = get_host_ip()
-
         if running:
             self.status_label.text = "▶ 运行中"
             self.status_label.theme_text_color = "Custom"
@@ -603,7 +578,6 @@ class QRQLLMobileApp(MDApp):
             self.status_label.theme_text_color = "Custom"
             self.status_label.text_color = (0.8, 0.0, 0.0, 1.0)
             self.start_btn.text = "启动服务器"
-
         self.ip_label.text = f"{ip}:2417"
 
     def on_start_server(self, instance):
@@ -628,9 +602,15 @@ class QRQLLMobileApp(MDApp):
     # ================================================================
 
     def on_start(self):
-        Thread(target=lambda: start_server(), daemon=True).start()
-        Snackbar(text="正在启动服务器...", duration=2).open()
-        Clock.schedule_interval(lambda dt: self.refresh_settings(), 3.0)
+        """应用启动后延迟启动服务器"""
+        Clock.schedule_once(self._start_server_delayed, 2.0)
+
+    def _start_server_delayed(self, dt):
+        """延迟启动服务器，避免闪退"""
+        try:
+            Thread(target=lambda: start_server(), daemon=True).start()
+        except Exception:
+            pass
 
     def on_stop(self):
         pass
