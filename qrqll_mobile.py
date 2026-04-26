@@ -138,7 +138,7 @@ class QRQLLMobileApp(MDApp):
 
         # 顶部标题栏：居中，删掉左菜单按钮
         toolbar = MDTopAppBar(
-            title="[center]QRQLL Mobile",
+            title="QRQLL Mobile",
             md_bg_color=self.theme_cls.primary_color,
             specific_text_color="#FFFFFF",
             left_action_items=[],  # 删掉左菜单按钮
