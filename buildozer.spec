@@ -5,7 +5,10 @@ package.name = qrqllmobile
 package.domain = org.qrqll.mobile
 source.dir = .
 source.main = qrqll_mobile.py
-source.include_exts = py,png,jpg,kv,atlas,ttf,txt,json
+source.include_exts = py,png,jpg,kv,atlas,ttf,txt,json,ttc
+
+# Android assets - 确保字体文件进 APK
+android.assets_zip =
 version = 1.0.0
 requirements = python3,kivy,kivymd,flask,waitress,pyjnius,android
 orientation = portrait

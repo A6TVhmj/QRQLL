@@ -136,11 +136,12 @@ class QRQLLMobileApp(MDApp):
         bg = self.theme_cls.bg_normal
         layout = MDBoxLayout(orientation="vertical", md_bg_color=bg)
 
+        # 顶部标题栏：居中，删掉左菜单按钮
         toolbar = MDTopAppBar(
-            title="QRQLL Mobile",
+            title="[center]QRQLL Mobile",
             md_bg_color=self.theme_cls.primary_color,
             specific_text_color="#FFFFFF",
-            left_action_items=[["menu", lambda x: None]],
+            left_action_items=[],  # 删掉左菜单按钮
         )
         layout.add_widget(toolbar)
 
@@ -149,7 +150,7 @@ class QRQLLMobileApp(MDApp):
         tab_res = MDBottomNavigationItem(
             name="resources",
             text="资源文件",
-            icon="folder-outline",
+            icon="folder",
         )
         self.resources_content = self._build_resources_tab()
         tab_res.add_widget(self.resources_content)
@@ -158,7 +159,7 @@ class QRQLLMobileApp(MDApp):
         tab_hw = MDBottomNavigationItem(
             name="homework",
             text="上网配置",
-            icon="link-variant",
+            icon="web",
         )
         self.hw_content = self._build_homework_tab()
         tab_hw.add_widget(self.hw_content)
@@ -167,7 +168,7 @@ class QRQLLMobileApp(MDApp):
         tab_set = MDBottomNavigationItem(
             name="settings",
             text="设置",
-            icon="cog-outline",
+            icon="cog",
         )
         self.settings_content = self._build_settings_tab()
         tab_set.add_widget(self.settings_content)
@@ -260,7 +261,7 @@ class QRQLLMobileApp(MDApp):
                 secondary_text=size_str,
                 on_release=lambda x, fn=fname: self.on_delete_resource(fn),
             )
-            item.add_widget(IconLeftWidget(icon="file-outline"))
+            item.add_widget(IconLeftWidget(icon="file"))
             self.resources_list_widget.add_widget(item)
 
     def on_delete_resource(self, fname):
