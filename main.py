@@ -417,7 +417,7 @@ class QRQLLMobileApp(MDApp):
         self.dialog = MDDialog(
             title="编辑上网配置" if not is_new else "添加上网配置",
             type="custom",
-            content=content,
+            content_cls=content,
             buttons=[
                 MDFlatButton(
                     text="删除" if not is_new else "取消",
