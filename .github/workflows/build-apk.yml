@@ -4,9 +4,11 @@ on:
   push:
     branches: [ main, master ]
     paths:
-      - 'main.py'
+      - 'qrqll_mobile.py'
       - 'server.py'
       - 'buildozer.spec'
+      - 'icon.png'
+      - 'HYQiHei_30S.ttf'
       - 'kv/**'
       - 'screens/**'
       - '.github/workflows/**'
