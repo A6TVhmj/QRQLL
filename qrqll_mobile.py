@@ -42,7 +42,6 @@ from kivymd.uix.textfield import MDTextField
 from kivymd.uix.label import MDLabel
 from kivymd.uix.card import MDCard
 from kivymd.uix.scrollview import MDScrollView
-from kivymd.uix.snackbar import Snackbar as _Snackbar
 from kivymd.uix.toolbar import MDTopAppBar
 from kivymd.uix.selectioncontrol import MDSwitch
 from kivymd.uix.gridlayout import MDGridLayout
@@ -61,16 +60,6 @@ from server import (
 
 # Android 键盘适配
 Window.softinput_mode = "below_target"
-
-
-# ============================================================
-# 简化的提示函数（调试用）
-# ============================================================
-def _sb(text="", duration=2):
-    """临时用 print 替代 Snackbar，避免崩溃"""
-    print(f"[Snackbar] {text}")
-    return None  # 不返回任何东西
-
 
 class QRQLLMobileApp(MDApp):
     """QRQLL Mobile 主应用"""
