@@ -61,6 +61,23 @@ from server import (
 # Android 键盘适配
 Window.softinput_mode = "below_target"
 
+# ============================================================
+# 跨平台提示：Android 用原生 Toast，PC 用 print
+# ============================================================
+def _toast(msg):
+    """显示简短提示"""
+    try:
+        if kivy_platform == "android":
+            from jnius import autoclass
+            PythonActivity = autoclass("org.kivy.android.PythonActivity")
+            Toast = autoclass("android.widget.Toast")
+            activity = PythonActivity.mActivity
+            Toast.makeText(activity, msg, Toast.LENGTH_SHORT).show()
+        else:
+            print(f"[提示] {msg}")
+    except Exception:
+        print(f"[提示] {msg}")
+
 class QRQLLMobileApp(MDApp):
     """QRQLL Mobile 主应用"""
 
@@ -201,7 +218,7 @@ class QRQLLMobileApp(MDApp):
     def on_add_resource(self, instance):
         try:
             if kivy_platform == "android":
-                _sb(text="Android 上请通过电脑传输文件到 resources 目录", duration=3).open()
+                _toast("Android 上请通过电脑传输文件到 resources 目录")
                 return
             from tkinter import Tk, filedialog
             root = Tk()
@@ -213,13 +230,13 @@ class QRQLLMobileApp(MDApp):
                 dest = os.path.join(get_resources_dir(), os.path.basename(fpath))
                 shutil.copy2(fpath, dest)
                 self.refresh_resources_list()
-                _sb(text=f"已添加: {os.path.basename(fpath)}", duration=2).open()
+                _toast(f"已添加: {os.path.basename(fpath)}")
         except Exception as e:
-            _sb(text=f"添加失败: {e}", duration=3).open()
+            _toast(f"添加失败: {e}")
 
     def on_refresh_resources(self, instance):
         self.refresh_resources_list()
-        _sb(text="已刷新", duration=1).open()
+        _toast("已刷新")
 
     def refresh_resources_list(self):
         self.resources_list_widget.clear_widgets()
@@ -257,9 +274,9 @@ class QRQLLMobileApp(MDApp):
         try:
             os.remove(fpath)
             self.refresh_resources_list()
-            _sb(text=f"已删除: {fname}", duration=2).open()
+            _toast(f"已删除: {fname}")
         except Exception as e:
-            _sb(text=f"删除失败: {e}", duration=3).open()
+            _toast(f"删除失败: {e}")
 
     # ================================================================
     # Tab 2: 上网配置
@@ -307,7 +324,7 @@ class QRQLLMobileApp(MDApp):
                 path = os.path.join(get_resources_dir(), "homework_config.json")
                 with open(path, "w", encoding="utf-8") as f:
                     json.dump(HOMEWORK_DATA, f, ensure_ascii=False, indent=2)
-                _sb(text=f"已导出到 resources 目录", duration=3).open()
+                _toast("已导出到 resources 目录")
                 return
             import tkinter.filedialog as fd
             from tkinter import Tk
@@ -322,14 +339,14 @@ class QRQLLMobileApp(MDApp):
             if fpath:
                 with open(fpath, "w", encoding="utf-8") as f:
                     json.dump(HOMEWORK_DATA, f, ensure_ascii=False, indent=2)
-                _sb(text=f"已导出", duration=3).open()
+                _toast("已导出")
         except Exception as e:
-            _sb(text=f"导出失败: {e}", duration=3).open()
+            _toast("导出失败: {e}")
 
     def on_import_homework(self, instance):
         try:
             if kivy_platform == "android":
-                _sb(text="请通过电脑上传 JSON 到 resources 目录", duration=3).open()
+                _toast("请通过电脑上传 JSON 到 resources 目录")
                 return
             import tkinter.filedialog as fd
             from tkinter import Tk
@@ -343,9 +360,9 @@ class QRQLLMobileApp(MDApp):
                 HOMEWORK_DATA.clear()
                 HOMEWORK_DATA.extend(data)
                 self.refresh_hw_list()
-                _sb(text=f"已导入 {len(data)} 项", duration=3).open()
+                _toast("已导入 {len(data)} 项")
         except Exception as e:
-            _sb(text=f"导入失败: {e}", duration=3).open()
+            _toast("导入失败: {e}")
 
     def refresh_hw_list(self):
         self.hw_list_widget.clear_widgets()
@@ -465,7 +482,7 @@ class QRQLLMobileApp(MDApp):
 
     def _hw_save(self, idx, is_new, name, url, scale_str):
         if not name or not url:
-            _sb(text="名称和 URL 不能为空", duration=2).open()
+            _toast("名称和 URL 不能为空")
             return
         try:
             scale = float(scale_str)
@@ -492,7 +509,7 @@ class QRQLLMobileApp(MDApp):
         if self.dialog:
             self.dialog.dismiss()
         self.refresh_hw_list()
-        _sb(text="已保存", duration=1).open()
+        _toast("已保存")
 
     def _hw_delete(self, idx):
         if 0 <= idx < len(HOMEWORK_DATA):
@@ -501,7 +518,7 @@ class QRQLLMobileApp(MDApp):
             if self.dialog:
                 self.dialog.dismiss()
             self.refresh_hw_list()
-            _sb(text=f"已删除: {name}", duration=2).open()
+            _toast("已删除: {name}")
 
     # ================================================================
     # Tab 3: 设置
@@ -634,9 +651,9 @@ class QRQLLMobileApp(MDApp):
         ok = start_server()
         if ok:
             self.server_started = True
-            _sb(text="服务器已启动 → 0.0.0.0:2417", duration=3).open()
+            _toast("服务器已启动 → 0.0.0.0:2417")
         else:
-            _sb(text="服务器已在运行", duration=2).open()
+            _toast("服务器已在运行")
         self.refresh_settings()
 
     def _on_hw_switch(self, instance, value):
