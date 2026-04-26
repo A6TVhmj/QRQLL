@@ -22,8 +22,16 @@ import kivy
 kivy.Config.set("graphics", "multisamples", "0")
 kivy.Config.set("graphics", "maxfps", "30")
 
-# 中文字体：Android 系统自带
-if kivy.utils.platform == "android":
+# 中文字体：使用自定义 HYQiHei 字体
+_font_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "HYQiHei_30S.ttf")
+if os.path.exists(_font_path):
+    kivy.Config.set("kivy", "default_font", [
+        "Roboto",
+        "data/fonts/DejaVuSans.ttf",
+        _font_path,
+    ])
+elif kivy.utils.platform == "android":
+    # Android 系统自带
     kivy.Config.set("kivy", "default_font", [
         "Roboto",
         "data/fonts/DejaVuSans.ttf",
