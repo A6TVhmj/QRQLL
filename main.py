@@ -22,32 +22,17 @@ import kivy
 kivy.Config.set("graphics", "multisamples", "0")
 kivy.Config.set("graphics", "maxfps", "30")
 
-# 中文字体：使用自定义 HYQiHei 字体
-_font_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "HYQiHei_30S.ttf")
-if os.path.exists(_font_path):
-    kivy.Config.set("kivy", "default_font", [
-        "Roboto",
-        "data/fonts/DejaVuSans.ttf",
-        _font_path,
-    ])
-elif kivy.utils.platform == "android":
-    # Android 系统自带
-    kivy.Config.set("kivy", "default_font", [
-        "Roboto",
-        "data/fonts/DejaVuSans.ttf",
-        "/system/fonts/NotoSansCJK-Regular.ttc",
-    ])
-else:
-    kivy.Config.set("kivy", "default_font", [
-        "Roboto",
-        "data/fonts/DejaVuSans.ttf",
-    ])
-
 from kivy.clock import Clock
 from kivy.lang import Builder
 from kivy.metrics import dp
 from kivy.utils import platform as kivy_platform
 from kivy.core.window import Window
+from kivy.core.text import LabelBase
+
+# 注册中文字体
+_font_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "HYQiHei_30S.ttf")
+if os.path.exists(_font_path):
+    LabelBase.register(name="HYQiHei", fn_regular=_font_path)
 
 from kivymd.app import MDApp
 from kivymd.uix.bottomnavigation import (
@@ -96,6 +81,14 @@ class QRQLLMobileApp(MDApp):
     def build(self):
         self.theme_cls.primary_palette = "Blue"
         self.theme_cls.theme_style = "Light"
+
+        # 中文字体：注册并设为 KivyMD 所有文本样式的默认字体
+        if os.path.exists(_font_path):
+            from kivy.core.text import LabelBase
+            LabelBase.register(name="HYQiHei", fn_regular=_font_path)
+            for k, v in self.theme_cls.font_styles.items():
+                if isinstance(v, (list, tuple)):
+                    v[0] = "HYQiHei"
 
         kv_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "kv", "qrqll.kv"
