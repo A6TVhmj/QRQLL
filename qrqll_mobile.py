@@ -64,13 +64,12 @@ Window.softinput_mode = "below_target"
 
 
 # ============================================================
-# KivyMD 1.2.0 Snackbar 兼容包装器
-# text 参数不能传入 __init__，需先创建再设属性
+# 简化的提示函数（调试用）
 # ============================================================
 def _sb(text="", duration=2):
-    sb = _Snackbar(duration=duration)
-    sb.text = text
-    return sb
+    """临时用 print 替代 Snackbar，避免崩溃"""
+    print(f"[Snackbar] {text}")
+    return None  # 不返回任何东西
 
 
 class QRQLLMobileApp(MDApp):
