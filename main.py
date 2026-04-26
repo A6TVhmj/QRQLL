@@ -48,7 +48,12 @@ from kivymd.uix.textfield import MDTextField
 from kivymd.uix.label import MDLabel
 from kivymd.uix.card import MDCard
 from kivymd.uix.scrollview import MDScrollView
-from kivymd.uix.snackbar import Snackbar
+from kivymd.uix.snackbar import Snackbar as _Snackbar
+def Snackbar(text="", duration=2):
+    """KivyMD 1.2.0 兼容 Snackbar（text 参数不能传 __init__）"""
+    sb = _Snackbar(duration=duration)
+    sb.text = text
+    return sb
 from kivymd.uix.toolbar import MDTopAppBar
 from kivymd.uix.selectioncontrol import MDSwitch
 from kivymd.uix.gridlayout import MDGridLayout
