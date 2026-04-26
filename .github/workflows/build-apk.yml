@@ -3,6 +3,13 @@ name: Build QRQLL Mobile APK
 on:
   push:
     branches: [ main, master ]
+    paths:
+      - 'main.py'
+      - 'server.py'
+      - 'buildozer.spec'
+      - 'kv/**'
+      - 'screens/**'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 jobs:
