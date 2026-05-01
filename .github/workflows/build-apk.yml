@@ -5,12 +5,10 @@ on:
     branches: [ main, master ]
     paths:
       - 'qrqll_mobile.py'
-      - 'server.py'
       - 'buildozer.spec'
       - 'icon.png'
-      - 'HYQiHei_30S.ttf'
+      - 'NotoSansSC-Regular.otf'
       - 'kv/**'
-      - 'screens/**'
       - '.github/workflows/**'
   workflow_dispatch:
 

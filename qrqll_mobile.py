@@ -42,11 +42,17 @@ _common_fonts = [
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
 ]
-for _f in _common_fonts:
-    if os.path.exists(_f):
-        LabelBase.register(name="LangFont", fn_regular=_f)
-        _LANG_FONT = "LangFont"
-        break
+# 优先检查同目录的 NotoSansSC-Regular.otf（打包进 APK 的 fallback）
+_local_font = os.path.join(os.path.dirname(os.path.abspath(__file__)), "NotoSansSC-Regular.otf")
+if os.path.exists(_local_font):
+    LabelBase.register(name="LangFont", fn_regular=_local_font)
+    _LANG_FONT = "LangFont"
+else:
+    for _f in _common_fonts:
+        if os.path.exists(_f):
+            LabelBase.register(name="LangFont", fn_regular=_f)
+            _LANG_FONT = "LangFont"
+            break
 
 from kivy.clock import Clock
 from kivy.lang import Builder
