@@ -323,6 +323,10 @@ class QRQLLMobileApp(MDApp):
                         v[0] = _LANG_FONT
                     except Exception:
                         pass
+            # MDTextField 的 helper_text 使用独立的 font_name_helper_text
+            from kivy.properties import StringProperty
+            from kivymd.uix.textfield import MDTextField
+            MDTextField.font_name_helper_text = StringProperty(_LANG_FONT)
 
         kv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kv", "qrqll.kv")
         if os.path.exists(kv_path):
