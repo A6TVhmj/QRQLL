@@ -35,12 +35,6 @@ _common_fonts = [
     "/system/fonts/DroidSansFallback.ttf",
     "/system/fonts/NotoSansSC-Regular.otf",
     "/system/fonts/NotoSansSC-Regular.ttf",
-    # Windows 微软雅黑
-    "C:/Windows/Fonts/msyh.ttc",
-    "C:/Windows/Fonts/msyhbd.ttc",
-    # Linux (Fontconfig)
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
 ]
 # 优先检查同目录的 NotoSansSC-Regular.otf（打包进 APK 的 fallback）
 _local_font = os.path.join(os.path.dirname(os.path.abspath(__file__)), "NotoSansSC-Regular.otf")
