@@ -13,13 +13,13 @@ from datetime import datetime
 from socket import socket, AF_INET, SOCK_DGRAM
 
 # ============================================================
-# Kivy 配置 — 在 kivy 完全导入前配置渲染参数
+# Kivy 配置 — 在 kivy.core.text 导入前设置全部渲染参数
 # ============================================================
 from kivy.config import Config as _KivyConfig
 _KivyConfig.set("graphics", "multisamples", "0")
 _KivyConfig.set("graphics", "maxfps", "30")
 
-# 提前查找字体路径（不导入 kivy，只做文件检测）
+# 提前查找字体路径（只做文件检测，不导入 kivy）
 _LANG_FONT = None
 _FONT_PATH = None
 _common_fonts = [
@@ -31,6 +31,11 @@ _common_fonts = [
 _local_font = os.path.join(os.path.dirname(os.path.abspath(__file__)), "NotoSansSC-Regular.otf")
 _FONT_PATH = _local_font if os.path.exists(_local_font) else next((f for f in _common_fonts if os.path.exists(f)), None)
 
+# 在 kivy.core.text 导入前设置默认字体链
+# default_font 格式：字符串化的 Python 列表 repr
+if _FONT_PATH:
+    _KivyConfig.set("kivy", "default_font", repr([_FONT_PATH, "Roboto", "data/fonts/DejaVuSans.ttf"]))
+
 # ============================================================
 # werkzeug 兼容性补丁
 # ============================================================
@@ -40,13 +45,13 @@ if not hasattr(werkzeug.urls, "url_quote"):
     werkzeug.urls.url_quote = quote
 
 # ============================================================
-# 中文字体注册（在 kivy 完全导入后，防止 SDL2 provider 覆盖）
+# 中文字体注册（kivy.core.text 此时读取了我们设的 default_font）
 # ============================================================
 import kivy
 if _FONT_PATH:
     from kivy.core.text import LabelBase as _LabelBase
     _LabelBase.register(name="LangFont", fn_regular=_FONT_PATH)
-    # 注册为 Roboto 覆盖默认字体——所有 Label/TextInput 自动使用中文字体
+    # 注册 Roboto 指向同字体——备胎策略
     _LabelBase.register(name="Roboto", fn_regular=_FONT_PATH)
     _LANG_FONT = "LangFont"
 
