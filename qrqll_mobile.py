@@ -13,21 +13,13 @@ from datetime import datetime
 from socket import socket, AF_INET, SOCK_DGRAM
 
 # ============================================================
-# werkzeug 兼容性补丁
+# Kivy 配置 — 在 kivy 完全导入前配置字体和渲染
 # ============================================================
-import werkzeug.urls
-if not hasattr(werkzeug.urls, "url_quote"):
-    from urllib.parse import quote
-    werkzeug.urls.url_quote = quote
+from kivy.config import Config as _KivyConfig
+_KivyConfig.set("graphics", "multisamples", "0")
+_KivyConfig.set("graphics", "maxfps", "30")
 
-import kivy
-kivy.Config.set("graphics", "multisamples", "0")
-kivy.Config.set("graphics", "maxfps", "30")
-
-# ============================================================
-# 中文字体 fallback：运行时注册，不增加 APK 体积
-# ============================================================
-from kivy.core.text import LabelBase
+# 查找中文字体并设为 kivy 全局默认字体
 _LANG_FONT = None
 _common_fonts = [
     "/system/fonts/NotoSansCJK-Regular.ttc",
@@ -38,8 +30,19 @@ _common_fonts = [
 _local_font = os.path.join(os.path.dirname(os.path.abspath(__file__)), "NotoSansSC-Regular.otf")
 _font_path = _local_font if os.path.exists(_local_font) else next((f for f in _common_fonts if os.path.exists(f)), None)
 if _font_path:
-    LabelBase.register(name="LangFont", fn_regular=_font_path)
+    from kivy.core.text import LabelBase as _LabelBase
+    _LabelBase.register(name="LangFont", fn_regular=_font_path)
     _LANG_FONT = "LangFont"
+    # 设为 Kivy 全局默认字体链 — 确保 MDTextField hint_text 等底层文本也使用中文字体
+    _KivyConfig.set("kivy", "default_font", ["LangFont", "Roboto", "data/fonts/DejaVuSans.ttf"])
+
+# ============================================================
+# werkzeug 兼容性补丁
+# ============================================================
+import werkzeug.urls
+if not hasattr(werkzeug.urls, "url_quote"):
+    from urllib.parse import quote
+    werkzeug.urls.url_quote = quote
 
 from kivy.clock import Clock
 from kivy.lang import Builder
@@ -303,8 +306,6 @@ class QRQLLMobileApp(MDApp):
 
         # 设置 Kivy 全局默认字体 + KivyMD 主题字体
         if _LANG_FONT:
-            import kivy.core.text as _kct
-            _kct.DEFAULT_FONT = _LANG_FONT
             for k, v in self.theme_cls.font_styles.items():
                 if isinstance(v, (list, tuple)) and len(v) >= 1 and k != "Icon":
                     try:
