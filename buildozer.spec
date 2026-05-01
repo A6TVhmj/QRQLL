@@ -4,7 +4,6 @@ title = QRQLL Mobile
 package.name = qrqllmobile
 package.domain = org.qrqll.mobile
 source.dir = .
-source.main = qrqll_mobile.py
 source.include_exts = py,png,jpg,kv,atlas,ttf,otf,txt,json
 version = 1.0.1
 requirements = python3,kivy,kivymd,flask,waitress,pyjnius,android

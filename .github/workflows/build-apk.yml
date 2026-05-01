@@ -5,6 +5,7 @@ on:
     branches: [ main, master ]
     paths:
       - 'qrqll_mobile.py'
+      - 'main.py'
       - 'buildozer.spec'
       - 'icon.png'
       - 'NotoSansSC-Regular.otf'
