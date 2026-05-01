@@ -1,17 +1,19 @@
 """
-QRQLL Mobile — KivyMD 主应用入口
-Material Design 3 底部导航栏，3 个 Tab
+QRQLL Mobile — 单文件版
+KivyMD 桌面/Android 客户端，Flask 服务端内嵌
 """
 
 import os
 import sys
 import json
-from threading import Thread
+import time
+from threading import Thread, Lock
+from typing import Dict, Optional
 from datetime import datetime
+from socket import socket, AF_INET, SOCK_DGRAM
 
 # ============================================================
-# werkzeug 兼容性补丁：新版 werkzeug (3.x) 移除了 url_quote
-# Flask 旧版依赖它，在导入前手工补上
+# werkzeug 兼容性补丁
 # ============================================================
 import werkzeug.urls
 if not hasattr(werkzeug.urls, "url_quote"):
@@ -46,40 +48,231 @@ from kivymd.uix.toolbar import MDTopAppBar
 from kivymd.uix.selectioncontrol import MDSwitch
 from kivymd.uix.gridlayout import MDGridLayout
 
-from server import (
-    app as flask_app,
-    HOMEWORK_DATA,
-    RESOURCES_DIR,
-    ENABLE_CLOSE_HW,
-    ENABLE_LOGGING,
-    start_server,
-    is_server_running,
-    get_host_ip,
-    get_resources_dir,
-)
-
-# Android 键盘适配
 Window.softinput_mode = "below_target"
 
 # ============================================================
-# 跨平台提示：Android 用原生 Toast，PC 用 print
+# Flask 服务端
 # ============================================================
+
+HOMEWORK_DATA = [
+    {"id": "1867975578577879042", "name": "百度搜索（横屏版）", "lessonName": "搜索", "url": "https://baidu.com", "scale": 0.5, "orientation": "landscape"},
+    {"id": "1867975578577879043", "name": "百度搜索（竖屏版）", "lessonName": "搜索", "url": "https://baidu.com", "scale": 0.5, "orientation": "portrait"},
+]
+ENABLE_CLOSE_HW = False
+ENABLE_LOGGING = False
+ENABLE_LOG_HEADERS = False
+LAST_SHUTDOWN_CLICK = 0
+_server_thread: Optional[Thread] = None
+_server_running = False
+_server_lock = Lock()
+
+
+def get_resources_dir() -> str:
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    res_dir = os.path.join(app_dir, "resources")
+    os.makedirs(res_dir, exist_ok=True)
+    return res_dir
+
+RESOURCES_DIR = get_resources_dir()
+
+from flask import Flask, jsonify, request, send_from_directory
+from waitress import serve
+
+app = Flask(__name__)
+
+
+@app.after_request
+def log_request(response):
+    if ENABLE_LOGGING:
+        now = datetime.now().strftime("%d/%b/%Y %H:%M:%S")
+        proto = request.environ.get("SERVER_PROTOCOL", "HTTP/1.1")
+        print(f'{request.remote_addr} - - [{now}] "{request.method} {request.full_path} {proto}" {response.status_code} -')
+        if ENABLE_LOG_HEADERS:
+            print("-" * 40)
+            for k, v in request.headers.items():
+                print(f"{k}: {v}")
+            print("-" * 40)
+    return response
+
+
+def ok(result=None, message=""):
+    return jsonify({"status": 0, "message": message, "result": result if result is not None else {}})
+
+
+def get_param(name: str, default: str = "") -> str:
+    return request.args.get(name, default) if request.args.get(name) is not None else request.form.get(name, default)
+
+
+def build_homework_list_dynamic(page_index: int, page_size: int):
+    start = page_index * page_size
+    end = start + page_size
+    items = HOMEWORK_DATA[start:end]
+    return ok({"total": len(HOMEWORK_DATA), "pageIndex": page_index, "pageSize": page_size, "results": items})
+
+
+def build_homework_list_static():
+    return ok({"results": HOMEWORK_DATA, "total": len(HOMEWORK_DATA)})
+
+
+def close_homework(homework_id: str):
+    old_len = len(HOMEWORK_DATA)
+    HOMEWORK_DATA[:] = [hw for hw in HOMEWORK_DATA if hw.get("id") != homework_id]
+    return ok(message="删除成功" if len(HOMEWORK_DATA) < old_len else "未找到该作业")
+
+
+def close_homework_all():
+    global ENABLE_CLOSE_HW
+    if ENABLE_CLOSE_HW:
+        HOMEWORK_DATA.clear()
+        return ok(message="已关闭所有作业")
+    return ok(message="close_homework 功能未启用")
+
+
+def get_host_ip() -> str:
+    """获取本机局域网 IP"""
+    try:
+        s = socket(AF_INET, SOCK_DGRAM)
+        s.settimeout(0.1)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+
+# ------------------------------------------------------------------
+# API 路由
+# ------------------------------------------------------------------
+
+@app.route("/api/v1/close_hw/close", methods=["POST"])
+def api_close_homework():
+    data = request.json or {}
+    if data.get("homeworkId"):
+        return close_homework(data["homeworkId"])
+    return close_homework_all()
+
+
+@app.route("/api/v1/close_hw/list", methods=["GET"])
+def api_homework_list():
+    try:
+        pi = int(request.args.get("pageIndex", 0))
+        ps = int(request.args.get("pageSize", 0))
+    except ValueError:
+        pi = ps = 0
+    if ps > 0:
+        return build_homework_list_dynamic(pi, ps)
+    return build_homework_list_static()
+
+
+@app.route("/api/v1/sync/resource", methods=["POST"])
+def api_resource_upload():
+    if "resource" not in request.files:
+        return ok(message="未上传文件")
+    file = request.files["resource"]
+    dest = os.path.join(get_resources_dir(), file.filename)
+    file.save(dest)
+    return ok(message=f"文件已保存: {file.filename}")
+
+
+@app.route("/api/v1/sync/list", methods=["GET"])
+def api_resource_list():
+    try:
+        files = os.listdir(get_resources_dir())
+    except Exception:
+        files = []
+    items = []
+    for f in files:
+        fpath = os.path.join(get_resources_dir(), f)
+        items.append({"name": f, "size": os.path.getsize(fpath) if os.path.isfile(fpath) else 0})
+    return ok(items)
+
+
+@app.route("/api/v1/sync/resource/<filename>", methods=["GET"])
+def api_resource_download(filename: str):
+    return send_from_directory(get_resources_dir(), filename, as_attachment=True)
+
+
+@app.route("/api/v1/config/course/key/closeHW/", methods=["GET"])
+def api_close_hw_push():
+    pi = int(request.args.get("pageIndex", 0))
+    ps = int(request.args.get("pageSize", 0))
+    return build_homework_list_dynamic(pi, ps) if ps > 0 else build_homework_list_static()
+
+
+@app.route("/api/v1/config/course/set", methods=["POST"])
+def api_course_set():
+    data = request.json or {}
+    for item in data:
+        HOMEWORK_DATA.append(item)
+    return ok(HOMEWORK_DATA, message="配置已更新")
+
+
+@app.route("/api/v1/sync/resource/batch", methods=["POST"])
+def api_resource_batch_upload():
+    for f in request.files.getlist("resource"):
+        f.save(os.path.join(get_resources_dir(), f.filename))
+    return ok(message="批量上传完成")
+
+
+@app.route("/api/v1/shutdown", methods=["POST"])
+def api_shutdown():
+    func = request.environ.get("werkzeug.server.shutdown")
+    if func:
+        func()
+    os._exit(0)
+    return ok(message="服务器已关闭")
+
+
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def catch_all(path):
+    return ok(message="QRQLL Mobile API Server")
+
+
+def _run_server():
+    global _server_running
+    _server_running = True
+    serve(app, host="0.0.0.0", port=2417)
+    _server_running = False
+
+
+def start_server() -> bool:
+    global _server_thread
+    with _server_lock:
+        if _server_running:
+            return False
+        _server_thread = Thread(target=_run_server, daemon=True)
+        _server_thread.start()
+        time.sleep(0.3)
+        return True
+
+
+def is_server_running() -> bool:
+    return _server_running
+
+# ============================================================
+# 提示（Android 原生 Toast，PC 打印）
+# ============================================================
+
 def _toast(msg):
-    """显示简短提示"""
     try:
         if kivy_platform == "android":
             from jnius import autoclass
             PythonActivity = autoclass("org.kivy.android.PythonActivity")
             Toast = autoclass("android.widget.Toast")
-            activity = PythonActivity.mActivity
-            Toast.makeText(activity, msg, Toast.LENGTH_SHORT).show()
+            Toast.makeText(PythonActivity.mActivity, msg, Toast.LENGTH_SHORT).show()
         else:
             print(f"[提示] {msg}")
     except Exception:
         print(f"[提示] {msg}")
 
+
+# ============================================================
+# KivyMD App
+# ============================================================
+
 class QRQLLMobileApp(MDApp):
-    """QRQLL Mobile 主应用"""
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -91,90 +284,37 @@ class QRQLLMobileApp(MDApp):
         self.theme_cls.primary_palette = "Blue"
         self.theme_cls.theme_style = "Light"
 
-        # ============================================================
-        # 中文字体修复：注册字体 + 覆盖 KivyMD 所有字体样式
-        # ============================================================
-        _font_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "HYQiHei_30S.ttf"
-        )
-        self._setup_font(_font_path)
-
-        kv_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "kv", "qrqll.kv"
-        )
+        kv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kv", "qrqll.kv")
         if os.path.exists(kv_path):
             Builder.load_file(kv_path)
 
         return self._build_main_layout()
 
-    def _setup_font(self, font_path):
-        """注册 HYQiHei 中文字体并设为 KivyMD 全局默认"""
-        if not os.path.exists(font_path):
-            return
-
-        from kivy.core.text import LabelBase
-        LabelBase.register(name="HYQiHei", fn_regular=font_path)
-
-        # 覆盖 KivyMD 所有字体样式名 → 用 HYQiHei
-        skip_keys = {"Icon"}  # 图标字体不能换
-        for k, v in self.theme_cls.font_styles.items():
-            if k in skip_keys:
-                continue
-            try:
-                if isinstance(v, (list, tuple)) and len(v) >= 1:
-                    v[0] = "HYQiHei"
-            except Exception:
-                pass
-
-        # 额外注册系统字体路径（给 Android 备用）
-        if kivy_platform == "android":
-            alt_fonts = [
-                "/system/fonts/NotoSansCJK-Regular.ttc",
-                "/system/fonts/DroidSansFallback.ttf",
-            ]
-            for alt in alt_fonts:
-                if os.path.exists(alt):
-                    LabelBase.register(name="HYQiHei_alt", fn_regular=alt)
-                    break
-
     def _build_main_layout(self):
         bg = self.theme_cls.bg_normal
         layout = MDBoxLayout(orientation="vertical", md_bg_color=bg)
 
-        # 顶部标题栏：居中，删掉左菜单按钮
         toolbar = MDTopAppBar(
             title="QRQLL Mobile",
             md_bg_color=self.theme_cls.primary_color,
             specific_text_color="#FFFFFF",
-            left_action_items=[],  # 删掉左菜单按钮
+            left_action_items=[],
         )
         layout.add_widget(toolbar)
 
         nav = MDBottomNavigation(panel_color=bg)
 
-        tab_res = MDBottomNavigationItem(
-            name="resources",
-            text="资源文件",
-            icon="folder",
-        )
+        tab_res = MDBottomNavigationItem(name="resources", text="资源文件", icon="folder")
         self.resources_content = self._build_resources_tab()
         tab_res.add_widget(self.resources_content)
         nav.add_widget(tab_res)
 
-        tab_hw = MDBottomNavigationItem(
-            name="homework",
-            text="上网配置",
-            icon="web",
-        )
+        tab_hw = MDBottomNavigationItem(name="homework", text="上网配置", icon="web")
         self.hw_content = self._build_homework_tab()
         tab_hw.add_widget(self.hw_content)
         nav.add_widget(tab_hw)
 
-        tab_set = MDBottomNavigationItem(
-            name="settings",
-            text="设置",
-            icon="cog",
-        )
+        tab_set = MDBottomNavigationItem(name="settings", text="设置", icon="cog")
         self.settings_content = self._build_settings_tab()
         tab_set.add_widget(self.settings_content)
         nav.add_widget(tab_set)
@@ -182,36 +322,18 @@ class QRQLLMobileApp(MDApp):
         layout.add_widget(nav)
         return layout
 
-    # ================================================================
-    # Tab 1: 资源文件
-    # ================================================================
+    # ---------- Tab 1: 资源 ----------
 
     def _build_resources_tab(self):
         box = MDBoxLayout(orientation="vertical", padding=dp(12), spacing=dp(8))
-
-        btn_row = MDBoxLayout(
-            orientation="horizontal",
-            size_hint_y=None,
-            height=dp(48),
-            spacing=dp(8),
-        )
-        btn_row.add_widget(MDRaisedButton(
-            text="添加文件",
-            icon="file-plus",
-            on_release=self.on_add_resource,
-        ))
-        btn_row.add_widget(MDRaisedButton(
-            text="刷新列表",
-            icon="refresh",
-            on_release=self.on_refresh_resources,
-        ))
+        btn_row = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(48), spacing=dp(8))
+        btn_row.add_widget(MDRaisedButton(text="添加文件", icon="file-plus", on_release=self.on_add_resource))
+        btn_row.add_widget(MDRaisedButton(text="刷新列表", icon="refresh", on_release=self.on_refresh_resources))
         box.add_widget(btn_row)
-
         scroll = MDScrollView()
         self.resources_list_widget = MDList()
         scroll.add_widget(self.resources_list_widget)
         box.add_widget(scroll)
-
         Clock.schedule_once(lambda dt: self.refresh_resources_list(), 0.5)
         return box
 
@@ -227,8 +349,7 @@ class QRQLLMobileApp(MDApp):
             root.destroy()
             if fpath:
                 import shutil
-                dest = os.path.join(get_resources_dir(), os.path.basename(fpath))
-                shutil.copy2(fpath, dest)
+                shutil.copy2(fpath, os.path.join(get_resources_dir(), os.path.basename(fpath)))
                 self.refresh_resources_list()
                 _toast(f"已添加: {os.path.basename(fpath)}")
         except Exception as e:
@@ -240,74 +361,38 @@ class QRQLLMobileApp(MDApp):
 
     def refresh_resources_list(self):
         self.resources_list_widget.clear_widgets()
-        res_dir = get_resources_dir()
-
         try:
-            files = sorted(os.listdir(res_dir))
+            files = sorted(os.listdir(get_resources_dir()))
         except Exception:
             files = []
-
         if not files:
-            self.resources_list_widget.add_widget(MDLabel(
-                text="没有资源文件\n通过电脑传输文件到 resources 目录",
-                halign="center",
-                theme_text_color="Secondary",
-                size_hint_y=None,
-                height=dp(80),
-            ))
+            self.resources_list_widget.add_widget(MDLabel(text="没有资源文件\n通过电脑传输文件到 resources 目录", halign="center", theme_text_color="Secondary", size_hint_y=None, height=dp(80)))
             return
-
         for fname in files:
-            fpath = os.path.join(res_dir, fname)
+            fpath = os.path.join(get_resources_dir(), fname)
             size = os.path.getsize(fpath) if os.path.isfile(fpath) else 0
-            size_str = f"{size / 1024:.1f} KB" if size < 1024 * 1024 else f"{size / 1024 / 1024:.1f} MB"
-            item = TwoLineIconListItem(
-                text=fname,
-                secondary_text=size_str,
-                on_release=lambda x, fn=fname: self.on_delete_resource(fn),
-            )
+            sz = f"{size/1024:.1f} KB" if size < 1024*1024 else f"{size/1024/1024:.1f} MB"
+            item = TwoLineIconListItem(text=fname, secondary_text=sz, on_release=lambda x, fn=fname: self.on_delete_resource(fn))
             item.add_widget(IconLeftWidget(icon="file"))
             self.resources_list_widget.add_widget(item)
 
     def on_delete_resource(self, fname):
-        fpath = os.path.join(get_resources_dir(), fname)
         try:
-            os.remove(fpath)
+            os.remove(os.path.join(get_resources_dir(), fname))
             self.refresh_resources_list()
             _toast(f"已删除: {fname}")
         except Exception as e:
             _toast(f"删除失败: {e}")
 
-    # ================================================================
-    # Tab 2: 上网配置
-    # ================================================================
+    # ---------- Tab 2: 上网配置 ----------
 
     def _build_homework_tab(self):
         box = MDBoxLayout(orientation="vertical", padding=dp(12), spacing=dp(8))
-
-        btn_row = MDBoxLayout(
-            orientation="horizontal",
-            size_hint_y=None,
-            height=dp(48),
-            spacing=dp(8),
-        )
-        btn_row.add_widget(MDRaisedButton(
-            text="添加上网",
-            icon="plus",
-            on_release=self.on_add_homework,
-        ))
-        btn_row.add_widget(MDRaisedButton(
-            text="导出 JSON",
-            icon="file-export",
-            on_release=self.on_export_homework,
-        ))
-        btn_row.add_widget(MDRaisedButton(
-            text="导入 JSON",
-            icon="file-import",
-            on_release=self.on_import_homework,
-        ))
+        btn_row = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(48), spacing=dp(8))
+        btn_row.add_widget(MDRaisedButton(text="添加上网", icon="plus", on_release=self.on_add_homework))
+        btn_row.add_widget(MDRaisedButton(text="导出 JSON", icon="file-export", on_release=self.on_export_homework))
+        btn_row.add_widget(MDRaisedButton(text="导入 JSON", icon="file-import", on_release=self.on_import_homework))
         box.add_widget(btn_row)
-
         scroll = MDScrollView()
         self.hw_list_widget = MDList()
         scroll.add_widget(self.hw_list_widget)
@@ -321,191 +406,104 @@ class QRQLLMobileApp(MDApp):
     def on_export_homework(self, instance):
         try:
             if kivy_platform == "android":
-                path = os.path.join(get_resources_dir(), "homework_config.json")
-                with open(path, "w", encoding="utf-8") as f:
+                p = os.path.join(get_resources_dir(), "homework_config.json")
+                with open(p, "w", encoding="utf-8") as f:
                     json.dump(HOMEWORK_DATA, f, ensure_ascii=False, indent=2)
                 _toast("已导出到 resources 目录")
                 return
-            import tkinter.filedialog as fd
-            from tkinter import Tk
+            from tkinter import Tk, filedialog
             root = Tk()
             root.withdraw()
-            fpath = fd.asksaveasfilename(
-                defaultextension=".json",
-                filetypes=[("JSON files", "*.json")],
-                initialfile="homework_config.json"
-            )
+            fp = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON", "*.json")], initialfile="homework_config.json")
             root.destroy()
-            if fpath:
-                with open(fpath, "w", encoding="utf-8") as f:
+            if fp:
+                with open(fp, "w", encoding="utf-8") as f:
                     json.dump(HOMEWORK_DATA, f, ensure_ascii=False, indent=2)
                 _toast("已导出")
         except Exception as e:
-            _toast("导出失败: {e}")
+            _toast(f"导出失败: {e}")
 
     def on_import_homework(self, instance):
         try:
             if kivy_platform == "android":
                 _toast("请通过电脑上传 JSON 到 resources 目录")
                 return
-            import tkinter.filedialog as fd
-            from tkinter import Tk
+            from tkinter import Tk, filedialog
             root = Tk()
             root.withdraw()
-            fpath = fd.askopenfilename(filetypes=[("JSON files", "*.json")])
+            fp = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
             root.destroy()
-            if fpath:
-                with open(fpath, "r", encoding="utf-8") as f:
+            if fp:
+                with open(fp, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 HOMEWORK_DATA.clear()
                 HOMEWORK_DATA.extend(data)
                 self.refresh_hw_list()
-                _toast("已导入 {len(data)} 项")
+                _toast(f"已导入 {len(data)} 项")
         except Exception as e:
-            _toast("导入失败: {e}")
+            _toast(f"导入失败: {e}")
 
     def refresh_hw_list(self):
         self.hw_list_widget.clear_widgets()
         if not HOMEWORK_DATA:
-            self.hw_list_widget.add_widget(MDLabel(
-                text="没有上网配置\n点击「添加上网」新建",
-                halign="center",
-                theme_text_color="Secondary",
-                size_hint_y=None,
-                height=dp(80),
-            ))
+            self.hw_list_widget.add_widget(MDLabel(text="没有上网配置\n点击「添加上网」新建", halign="center", theme_text_color="Secondary", size_hint_y=None, height=dp(80)))
             return
-
         for idx, hw in enumerate(HOMEWORK_DATA):
-            ori_icon = "rotate-3d" if hw.get("orientation") == "landscape" else "cellphone"
-            ori_text = "横屏" if hw.get("orientation") == "landscape" else "竖屏"
+            ori = hw.get("orientation", "portrait")
             item = TwoLineIconListItem(
                 text=hw.get("name", "未命名"),
-                secondary_text=f"{hw.get('url', '')} | {ori_text} ×{hw.get('scale', 1.0)}",
+                secondary_text=f"{hw.get('url','')} | {'横屏' if ori=='landscape' else '竖屏'} x{hw.get('scale',1.0)}",
                 on_release=lambda x, i=idx: self.on_edit_homework(i),
             )
-            item.add_widget(IconLeftWidget(icon=ori_icon))
+            item.add_widget(IconLeftWidget(icon="rotate-3d" if ori == "landscape" else "cellphone"))
             self.hw_list_widget.add_widget(item)
 
-    def on_edit_homework(self, idx: int):
-        hw = HOMEWORK_DATA[idx]
-        self.show_hw_editor(idx, hw)
-
-    # ================================================================
-    # 编辑弹窗
-    # ================================================================
+    def on_edit_homework(self, idx):
+        self.show_hw_editor(idx, HOMEWORK_DATA[idx])
 
     def show_hw_editor(self, idx, hw=None):
         is_new = idx is None
         hw = hw or {"name": "", "url": "", "scale": 0.5, "orientation": "landscape"}
-
         if self.dialog:
             self.dialog.dismiss()
-
-        name_field = MDTextField(
-            text=hw["name"],
-            hint_text="名称",
-            helper_text="例: 百度搜索（横屏版）",
-            helper_text_mode="on_focus",
-        )
-        url_field = MDTextField(
-            text=hw["url"],
-            hint_text="URL",
-            helper_text="例: https://baidu.com",
-            helper_text_mode="on_focus",
-        )
-        scale_field = MDTextField(
-            text=str(hw.get("scale", 0.5)),
-            hint_text="缩放 (0.1~1.0)",
-            helper_text="例: 0.5",
-            helper_text_mode="on_focus",
-        )
-
-        ori_layout = MDBoxLayout(
-            orientation="horizontal",
-            spacing=dp(8),
-            size_hint_y=None,
-            height=dp(48),
-        )
-        ori_land_btn = MDRaisedButton(
-            text="横屏",
-            on_release=lambda x: self._set_orientation("landscape"),
-        )
-        ori_port_btn = MDRaisedButton(
-            text="竖屏",
-            on_release=lambda x: self._set_orientation("portrait"),
-        )
+        nf = MDTextField(text=hw["name"], hint_text="名称", helper_text="例: 百度搜索（横屏版）", helper_text_mode="on_focus")
+        uf = MDTextField(text=hw["url"], hint_text="URL", helper_text="例: https://baidu.com", helper_text_mode="on_focus")
+        sf = MDTextField(text=str(hw.get("scale", 0.5)), hint_text="缩放 (0.1~1.0)", helper_text="例: 0.5", helper_text_mode="on_focus")
+        ol = MDBoxLayout(orientation="horizontal", spacing=dp(8), size_hint_y=None, height=dp(48))
+        lb = MDRaisedButton(text="横屏", on_release=lambda x: setattr(self, "_cur_ori", "landscape"))
+        pb = MDRaisedButton(text="竖屏", on_release=lambda x: setattr(self, "_cur_ori", "portrait"))
         if hw.get("orientation") == "portrait":
-            ori_port_btn.md_bg_color = self.theme_cls.primary_color
+            pb.md_bg_color = self.theme_cls.primary_color
         else:
-            ori_land_btn.md_bg_color = self.theme_cls.primary_color
-        ori_layout.add_widget(ori_land_btn)
-        ori_layout.add_widget(ori_port_btn)
-
-        self._current_orientation = hw.get("orientation", "landscape")
-
-        content = MDBoxLayout(
-            orientation="vertical",
-            spacing=dp(12),
-            size_hint_y=None,
-            height=dp(320),
-        )
-        content.add_widget(name_field)
-        content.add_widget(url_field)
-        content.add_widget(scale_field)
-        content.add_widget(ori_layout)
-
+            lb.md_bg_color = self.theme_cls.primary_color
+        ol.add_widget(lb); ol.add_widget(pb)
+        self._cur_ori = hw.get("orientation", "landscape")
+        ct = MDBoxLayout(orientation="vertical", spacing=dp(12), size_hint_y=None, height=dp(320))
+        ct.add_widget(nf); ct.add_widget(uf); ct.add_widget(sf); ct.add_widget(ol)
         self.dialog = MDDialog(
             title="编辑上网配置" if not is_new else "添加上网配置",
-            type="custom",
-            content_cls=content,
+            type="custom", content_cls=ct,
             buttons=[
-                MDFlatButton(
-                    text="删除" if not is_new else "取消",
-                    on_release=lambda x: self._hw_delete(idx) if not is_new else self.dialog.dismiss(),
-                ),
-                MDFlatButton(
-                    text="保存",
-                    on_release=lambda x: self._hw_save(
-                        idx, is_new,
-                        name_field.text.strip(),
-                        url_field.text.strip(),
-                        scale_field.text.strip(),
-                    ),
-                ),
+                MDFlatButton(text="删除" if not is_new else "取消", on_release=lambda x: self._hw_delete(idx) if not is_new else self.dialog.dismiss()),
+                MDFlatButton(text="保存", on_release=lambda x: self._hw_save(idx, is_new, nf.text.strip(), uf.text.strip(), sf.text.strip())),
             ],
         )
         self.dialog.open()
-
-    def _set_orientation(self, ori):
-        self._current_orientation = ori
 
     def _hw_save(self, idx, is_new, name, url, scale_str):
         if not name or not url:
             _toast("名称和 URL 不能为空")
             return
         try:
-            scale = float(scale_str)
-            if scale <= 0:
-                scale = 0.5
+            scale = max(0.1, min(1.0, float(scale_str)))
         except ValueError:
             scale = 0.5
-
-        hw_entry = {
-            "id": f"hw_{datetime.now().strftime('%Y%m%d%H%M%S')}",
-            "name": name,
-            "lessonName": name,
-            "url": url,
-            "scale": scale,
-            "orientation": self._current_orientation,
-        }
-
+        entry = {"id": f"hw_{datetime.now().strftime('%Y%m%d%H%M%S')}", "name": name, "lessonName": name, "url": url, "scale": scale, "orientation": self._cur_ori}
         if is_new:
-            HOMEWORK_DATA.append(hw_entry)
+            HOMEWORK_DATA.append(entry)
         else:
-            hw_entry["id"] = HOMEWORK_DATA[idx]["id"]
-            HOMEWORK_DATA[idx] = hw_entry
-
+            entry["id"] = HOMEWORK_DATA[idx]["id"]
+            HOMEWORK_DATA[idx] = entry
         if self.dialog:
             self.dialog.dismiss()
         self.refresh_hw_list()
@@ -518,116 +516,39 @@ class QRQLLMobileApp(MDApp):
             if self.dialog:
                 self.dialog.dismiss()
             self.refresh_hw_list()
-            _toast("已删除: {name}")
+            _toast(f"已删除: {name}")
 
-    # ================================================================
-    # Tab 3: 设置
-    # ================================================================
+    # ---------- Tab 3: 设置 ----------
 
     def _build_settings_tab(self):
-        box = MDBoxLayout(
-            orientation="vertical",
-            padding=dp(16),
-            spacing=dp(12),
-        )
-
-        card = MDCard(
-            orientation="vertical",
-            padding=dp(16),
-            spacing=dp(8),
-            size_hint_y=None,
-            height=dp(160),
-        )
-        card.add_widget(MDLabel(
-            text="服务器状态",
-            font_style="H6",
-            bold=True,
-        ))
-
-        self.status_label = MDLabel(
-            text="未启动",
-            theme_text_color="Secondary",
-            halign="center",
-            font_style="H5",
-        )
+        box = MDBoxLayout(orientation="vertical", padding=dp(16), spacing=dp(12))
+        card = MDCard(orientation="vertical", padding=dp(16), spacing=dp(8), size_hint_y=None, height=dp(160))
+        card.add_widget(MDLabel(text="服务器状态", font_style="H6", bold=True))
+        self.status_label = MDLabel(text="未启动", theme_text_color="Secondary", halign="center", font_style="H5")
         card.add_widget(self.status_label)
         box.add_widget(card)
-
-        self.ip_card = MDCard(
-            orientation="vertical",
-            padding=dp(16),
-            spacing=dp(4),
-            size_hint_y=None,
-            height=dp(100),
-        )
-        self.ip_card.add_widget(MDLabel(text="IP 地址", font_style="H6"))
-        self.ip_label = MDLabel(
-            text="获取中...",
-            font_style="H5",
-            theme_text_color="Primary",
-            halign="center",
-        )
-        self.ip_card.add_widget(self.ip_label)
-        box.add_widget(self.ip_card)
-
-        btn_row = MDBoxLayout(
-            orientation="horizontal",
-            size_hint_y=None,
-            height=dp(48),
-            spacing=dp(16),
-        )
-        self.start_btn = MDRaisedButton(
-            text="启动服务器",
-            icon="play",
-            on_release=self.on_start_server,
-        )
-        btn_row.add_widget(self.start_btn)
-        box.add_widget(btn_row)
-
-        hw_switch_row = MDBoxLayout(
-            orientation="horizontal",
-            size_hint_y=None,
-            height=dp(48),
-            spacing=dp(8),
-        )
-        hw_switch_row.add_widget(MDLabel(
-            text="关闭 HW 模式",
-            size_hint_x=0.7,
-        ))
-        self.hw_switch = MDSwitch(
-            active=ENABLE_CLOSE_HW,
-            size_hint_x=0.3,
-        )
-        self.hw_switch.bind(active=self._on_hw_switch)
-        hw_switch_row.add_widget(self.hw_switch)
-        box.add_widget(hw_switch_row)
-
-        log_switch_row = MDBoxLayout(
-            orientation="horizontal",
-            size_hint_y=None,
-            height=dp(48),
-            spacing=dp(8),
-        )
-        log_switch_row.add_widget(MDLabel(
-            text="日志记录",
-            size_hint_x=0.7,
-        ))
-        self.log_switch = MDSwitch(
-            active=ENABLE_LOGGING,
-            size_hint_x=0.3,
-        )
-        self.log_switch.bind(active=self._on_log_switch)
-        log_switch_row.add_widget(self.log_switch)
-        box.add_widget(log_switch_row)
-
-        about_label = MDLabel(
-            text="QRQLL Mobile v1.0\n基于 QRQLL V2.3 移植\n使用 KivyMD 构建",
-            halign="center",
-            theme_text_color="Secondary",
-            size_hint_y=None,
-            height=dp(80),
-        )
-        box.add_widget(about_label)
+        ic = MDCard(orientation="vertical", padding=dp(16), spacing=dp(4), size_hint_y=None, height=dp(100))
+        ic.add_widget(MDLabel(text="IP 地址", font_style="H6"))
+        self.ip_label = MDLabel(text="获取中...", font_style="H5", theme_text_color="Primary", halign="center")
+        ic.add_widget(self.ip_label)
+        box.add_widget(ic)
+        br = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(48), spacing=dp(16))
+        self.start_btn = MDRaisedButton(text="启动服务器", icon="play", on_release=self.on_start_server)
+        br.add_widget(self.start_btn)
+        box.add_widget(br)
+        hwr = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(48), spacing=dp(8))
+        hwr.add_widget(MDLabel(text="关闭 HW 模式", size_hint_x=0.7))
+        self.hw_switch = MDSwitch(active=ENABLE_CLOSE_HW, size_hint_x=0.3)
+        self.hw_switch.bind(active=lambda i, v: globals().update(ENABLE_CLOSE_HW=v))
+        hwr.add_widget(self.hw_switch)
+        box.add_widget(hwr)
+        lgr = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(48), spacing=dp(8))
+        lgr.add_widget(MDLabel(text="日志记录", size_hint_x=0.7))
+        self.log_switch = MDSwitch(active=ENABLE_LOGGING, size_hint_x=0.3)
+        self.log_switch.bind(active=lambda i, v: globals().update(ENABLE_LOGGING=v))
+        lgr.add_widget(self.log_switch)
+        box.add_widget(lgr)
+        box.add_widget(MDLabel(text="QRQLL Mobile v1.0\n基于 QRQLL V2.3 移植\n使用 KivyMD 构建", halign="center", theme_text_color="Secondary", size_hint_y=None, height=dp(80)))
         box.add_widget(MDBoxLayout())
         Clock.schedule_once(lambda dt: self.refresh_settings(), 0.5)
         return box
@@ -636,48 +557,27 @@ class QRQLLMobileApp(MDApp):
         running = is_server_running()
         ip = get_host_ip()
         if running:
-            self.status_label.text = "▶ 运行中"
+            self.status_label.text = "运行中"
             self.status_label.theme_text_color = "Custom"
-            self.status_label.text_color = (0.0, 0.6, 0.0, 1.0)
+            self.status_label.text_color = (0, 0.6, 0, 1)
             self.start_btn.text = "重新启动"
         else:
-            self.status_label.text = "⏹ 已停止"
+            self.status_label.text = "已停止"
             self.status_label.theme_text_color = "Custom"
-            self.status_label.text_color = (0.8, 0.0, 0.0, 1.0)
+            self.status_label.text_color = (0.8, 0, 0, 1)
             self.start_btn.text = "启动服务器"
         self.ip_label.text = f"{ip}:2417"
 
     def on_start_server(self, instance):
-        ok = start_server()
-        if ok:
+        if start_server():
             self.server_started = True
             _toast("服务器已启动 → 0.0.0.0:2417")
         else:
             _toast("服务器已在运行")
         self.refresh_settings()
 
-    def _on_hw_switch(self, instance, value):
-        global ENABLE_CLOSE_HW
-        ENABLE_CLOSE_HW = value
-
-    def _on_log_switch(self, instance, value):
-        global ENABLE_LOGGING
-        ENABLE_LOGGING = value
-
-    # ================================================================
-    # 应用生命周期
-    # ================================================================
-
     def on_start(self):
-        """应用启动后延迟启动服务器"""
-        Clock.schedule_once(self._start_server_delayed, 2.0)
-
-    def _start_server_delayed(self, dt):
-        """延迟启动服务器，避免闪退"""
-        try:
-            Thread(target=lambda: start_server(), daemon=True).start()
-        except Exception:
-            pass
+        Clock.schedule_once(lambda dt: Thread(target=start_server, daemon=True).start(), 2.0)
 
     def on_stop(self):
         pass
