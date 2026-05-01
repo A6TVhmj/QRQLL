@@ -32,9 +32,10 @@ _font_path = _local_font if os.path.exists(_local_font) else next((f for f in _c
 if _font_path:
     from kivy.core.text import LabelBase as _LabelBase
     _LabelBase.register(name="LangFont", fn_regular=_font_path)
+    # 额外注册到 "Roboto" 名称 — Kivy 默认字体就是 Roboto，
+    # 这样 TextInput hint_text、Label 等底层控件自动用上中文字体
+    _LabelBase.register(name="Roboto", fn_regular=_font_path)
     _LANG_FONT = "LangFont"
-    # 设为 Kivy 全局默认字体链 — 确保 MDTextField hint_text 等底层文本也使用中文字体
-    _KivyConfig.set("kivy", "default_font", ["LangFont", "Roboto", "data/fonts/DejaVuSans.ttf"])
 
 # ============================================================
 # werkzeug 兼容性补丁
