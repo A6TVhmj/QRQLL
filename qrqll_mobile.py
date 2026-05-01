@@ -510,9 +510,9 @@ class QRQLLMobileApp(MDApp):
         hw = hw or {"name": "", "url": "", "scale": 0.5, "orientation": "landscape"}
         if self.dialog:
             self.dialog.dismiss()
-        nf = MDTextField(text=hw["name"], hint_text="名称", helper_text="例: 百度搜索（横屏版）", helper_text_mode="on_focus")
-        uf = MDTextField(text=hw["url"], hint_text="URL", helper_text="例: https://baidu.com", helper_text_mode="on_focus")
-        sf = MDTextField(text=str(hw.get("scale", 0.5)), hint_text="缩放 (0.1~1.0)", helper_text="例: 0.5", helper_text_mode="on_focus")
+        nf = MDTextField(text=hw["name"], hint_text="名称")
+        uf = MDTextField(text=hw["url"], hint_text="URL")
+        sf = MDTextField(text=str(hw.get("scale", 0.5)), hint_text="缩放 (0.1~1.0)")
         ol = MDBoxLayout(orientation="horizontal", spacing=dp(8), size_hint_y=None, height=dp(48))
         lb = MDRaisedButton(text="横屏", on_release=lambda x: setattr(self, "_cur_ori", "landscape"))
         pb = MDRaisedButton(text="竖屏", on_release=lambda x: setattr(self, "_cur_ori", "portrait"))
