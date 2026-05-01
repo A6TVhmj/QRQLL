@@ -32,10 +32,9 @@ _local_font = os.path.join(os.path.dirname(os.path.abspath(__file__)), "NotoSans
 _FONT_PATH = _local_font if os.path.exists(_local_font) else next((f for f in _common_fonts if os.path.exists(f)), None)
 
 # 在 kivy.core.text 导入前设置默认字体链
-# default_font 格式：literal_eval 可解析的字符串列表
-# [0] = 字体名（可用文件路径直接做名字），后续 = 字形变体文件路径
+# [0] = 字体名，[1] = 常规字形文件路径，[2-4] = 斜体/粗体等
 if _FONT_PATH:
-    _KivyConfig.set("kivy", "default_font", repr([_FONT_PATH]))
+    _KivyConfig.set("kivy", "default_font", repr(["LangFont", _FONT_PATH]))
 
 # ============================================================
 # werkzeug 兼容性补丁
