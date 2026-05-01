@@ -25,28 +25,21 @@ kivy.Config.set("graphics", "multisamples", "0")
 kivy.Config.set("graphics", "maxfps", "30")
 
 # ============================================================
-# 中文字体 fallback：使用 Android 系统自带字体（不进 APK）
+# 中文字体 fallback：运行时注册，不增加 APK 体积
 # ============================================================
 from kivy.core.text import LabelBase
 _LANG_FONT = None
 _common_fonts = [
-    # Android
     "/system/fonts/NotoSansCJK-Regular.ttc",
     "/system/fonts/DroidSansFallback.ttf",
     "/system/fonts/NotoSansSC-Regular.otf",
     "/system/fonts/NotoSansSC-Regular.ttf",
 ]
-# 优先检查同目录的 NotoSansSC-Regular.otf（打包进 APK 的 fallback）
 _local_font = os.path.join(os.path.dirname(os.path.abspath(__file__)), "NotoSansSC-Regular.otf")
-if os.path.exists(_local_font):
-    LabelBase.register(name="LangFont", fn_regular=_local_font)
+_font_path = _local_font if os.path.exists(_local_font) else next((f for f in _common_fonts if os.path.exists(f)), None)
+if _font_path:
+    LabelBase.register(name="LangFont", fn_regular=_font_path)
     _LANG_FONT = "LangFont"
-else:
-    for _f in _common_fonts:
-        if os.path.exists(_f):
-            LabelBase.register(name="LangFont", fn_regular=_f)
-            _LANG_FONT = "LangFont"
-            break
 
 from kivy.clock import Clock
 from kivy.lang import Builder
@@ -308,8 +301,10 @@ class QRQLLMobileApp(MDApp):
         self.theme_cls.primary_palette = "Blue"
         self.theme_cls.theme_style = "Light"
 
-        # 设置中文字体 fallback（Android 系统字体）
+        # 设置 Kivy 全局默认字体 + KivyMD 主题字体
         if _LANG_FONT:
+            import kivy.core.text as _kct
+            _kct.DEFAULT_FONT = _LANG_FONT
             for k, v in self.theme_cls.font_styles.items():
                 if isinstance(v, (list, tuple)) and len(v) >= 1 and k != "Icon":
                     try:
