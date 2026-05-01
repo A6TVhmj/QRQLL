@@ -30,10 +30,17 @@ kivy.Config.set("graphics", "maxfps", "30")
 from kivy.core.text import LabelBase
 _LANG_FONT = None
 _common_fonts = [
+    # Android
     "/system/fonts/NotoSansCJK-Regular.ttc",
     "/system/fonts/DroidSansFallback.ttf",
     "/system/fonts/NotoSansSC-Regular.otf",
     "/system/fonts/NotoSansSC-Regular.ttf",
+    # Windows 微软雅黑
+    "C:/Windows/Fonts/msyh.ttc",
+    "C:/Windows/Fonts/msyhbd.ttc",
+    # Linux (Fontconfig)
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
 ]
 for _f in _common_fonts:
     if os.path.exists(_f):
