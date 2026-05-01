@@ -618,3 +618,4 @@ class QRQLLMobileApp(MDApp):
 
 if __name__ == "__main__":
     QRQLLMobileApp().run()
+  
