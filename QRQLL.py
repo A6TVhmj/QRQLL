@@ -6,7 +6,7 @@ from shutil import copy2
 from threading import Thread
 from datetime import datetime
 from typing import Dict
-from tkinter import filedialog, messagebox, StringVar
+from tkinter import filedialog, messagebox, StringVar, Text
 from socket import socket, AF_INET, SOCK_DGRAM
 import ttkbootstrap as ttk
 from flask import Flask, jsonify, request, send_from_directory
@@ -39,7 +39,32 @@ ENABLE_LOGGING = False
 ENABLE_LOG_HEADERS = False
 LAST_SHUTDOWN_CLICK = 0
 
+CONNECTED_DEVICES = {}
+
+gui_instance = None
+
 app = Flask(__name__)
+
+@app.after_request
+def log_request(response):
+    CONNECTED_DEVICES[request.remote_addr] = {
+        "time": time.time(),
+        "path": request.path
+    }
+    
+    if ENABLE_LOGGING:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        msg = f"[{now}] {request.remote_addr} - \"{request.method} {request.path}\" {response.status_code}"
+        if gui_instance:
+            gui_instance.append_log(msg)
+        if ENABLE_LOG_HEADERS:
+            h_msg = "-" * 20 + " HEADERS " + "-" * 20 + "\n"
+            for k, v in request.headers.items():
+                h_msg += f"{k}: {v}\n"
+            h_msg += "-" * 49
+            if gui_instance:
+                gui_instance.append_log(h_msg)
+    return response
 
 def get_app_dir():
     if getattr(sys, 'frozen', False):
@@ -50,19 +75,6 @@ APP_DIR = get_app_dir()
 RESOURCES_DIR = os.path.join(APP_DIR, "resources")
 if not os.path.exists(RESOURCES_DIR):
     os.makedirs(RESOURCES_DIR)
-
-@app.after_request
-def log_request(response):
-    if ENABLE_LOGGING:
-        now = datetime.now().strftime("%d/%b/%Y %H:%M:%S")
-        proto = request.environ.get("SERVER_PROTOCOL", "HTTP/1.1")
-        print(f'{request.remote_addr} - - [{now}] "{request.method} {request.full_path} {proto}" {response.status_code} -')
-        if ENABLE_LOG_HEADERS:
-            print("-" * 40)
-            for k, v in request.headers.items():
-                print(f"{k}: {v}")
-            print("-" * 40)
-    return response
 
 def ok(result=None, message: str = ""):
     return jsonify({"status": 0, "message": message, "result": result if result is not None else {}})
@@ -104,11 +116,13 @@ def build_homework_detail_dynamic(homework_id: str) -> Dict:
         if not target_hw:
             target_hw = HOMEWORK_DATA[0] if HOMEWORK_DATA else {}
             if not target_hw: return {}
+    
     iframe_url = target_hw.get("url", "")
     hw_name = target_hw.get("name", "")
     scale = float(target_hw.get("scale", 0.5))
     if scale <= 0: scale = 0.5
     ori = target_hw.get("orientation", "landscape")
+    
     if ori == "portrait":
         w, h = f"{100/scale:.2f}vh", f"{100/scale:.2f}vw"
         iframe_style = (
@@ -129,8 +143,8 @@ def build_homework_detail_dynamic(homework_id: str) -> Dict:
         f'style="{iframe_style}"></iframe></div>'
     )
     return {
-        "id": homework_id, "name": hw_name, "bizType": 21, "createType": None,
-        "publishAnswerStatus": 1, "submitStatus": 1, "taskId": "TASK_" + homework_id,
+        "id": homework_id, "name": hw_name, "bizType": 21, "createType": "2",
+        "publishAnswerStatus": "1", "submitStatus": "1", "taskId": "TASK_" + homework_id,
         "hwPageInfoDTOs": [{
             "id": "PAGE_" + homework_id, "homeworkId": homework_id, "pageType": 3,
             "pageSeqNum": 1, "needAnswerStatus": 0, "pageStatus": 1, "del": 0,
@@ -210,11 +224,15 @@ class MockServerApp:
         self.notebook.pack(fill=BOTH, expand=True, padx=10, pady=5)
         self.init_resource_tab()
         self.init_homework_tab()
+        self.init_device_tab()
         self.init_settings_tab()
+        self.init_log_tab()
 
         self.status_var = StringVar()
         self.status_var.set("服务器运行中...")
         ttk.Label(self.root, textvariable=self.status_var, relief=SUNKEN, padding=5).pack(fill=X)
+        
+        self.refresh_devices_loop()
 
     def get_host_ip(self):
         try:
@@ -227,8 +245,7 @@ class MockServerApp:
 
     def set_app_icon(self):
         try:
-            base_path = sys._MEIPASS if hasattr(sys, '_MEIPASS') else os.path.dirname(os.path.abspath(__file__))
-            icon_path = os.path.join(base_path, "icon.png")
+            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.png")
             if os.path.exists(icon_path): self.root.iconphoto(False, PhotoImage(Image.open(icon_path)))
         except: pass
 
@@ -238,25 +255,69 @@ class MockServerApp:
         ttk.Label(header, text="QRQLL Mock 控制台", font=("Arial", 16, "bold")).pack(side=LEFT)
         ttk.Label(header, text=f"Local IP: {self.get_host_ip()}:2417", font=("Consolas", 12, "bold"), bootstyle="inverse-primary", padding=5).pack(side=LEFT, padx=20)
 
+    def init_device_tab(self):
+        tab = ttk.Frame(self.notebook)
+        self.notebook.add(tab, text="📱 设备管理")
+        
+        tool_frame = ttk.Frame(tab, padding=5)
+        tool_frame.pack(fill=X)
+        ttk.Button(tool_frame, text="🗑️ 清理离线设备", bootstyle=WARNING, command=self.clear_offline_devices).pack(side=LEFT, padx=2)
+        ttk.Button(tool_frame, text="🚫 清空全部", bootstyle=DANGER, command=self.clear_all_devices).pack(side=LEFT, padx=2)
+        ttk.Label(tool_frame, text="💡 列表每 3 秒自动刷新。超过 5 分钟无响应视为离线。", bootstyle=SECONDARY).pack(side=RIGHT, padx=10)
+        
+        cols = ("ip", "time", "path", "status")
+        self.dev_tree = ttk.Treeview(tab, columns=cols, show="headings", bootstyle=INFO)
+        self.dev_tree.heading("ip", text="设备 IP")
+        self.dev_tree.heading("time", text="最后活跃时间")
+        self.dev_tree.heading("path", text="最后请求接口")
+        self.dev_tree.heading("status", text="状态")
+        
+        self.dev_tree.column("ip", width=150)
+        self.dev_tree.column("time", width=180)
+        self.dev_tree.column("path", width=350)
+        self.dev_tree.column("status", width=100)
+        self.dev_tree.pack(fill=BOTH, expand=True, padx=5, pady=5)
+
+    def refresh_devices_loop(self):
+        for item in self.dev_tree.get_children():
+            self.dev_tree.delete(item)
+            
+        now = time.time()
+        for ip, info in list(CONNECTED_DEVICES.items()):
+            t = info["time"]
+            dt_str = datetime.fromtimestamp(t).strftime("%Y-%m-%d %H:%M:%S")
+            status = "🟢 在线" if now - t < 300 else "⚪ 离线"
+            self.dev_tree.insert("", "end", values=(ip, dt_str, info["path"], status))
+            
+        self.root.after(3000, self.refresh_devices_loop)
+
+    def clear_offline_devices(self):
+        now = time.time()
+        offline_ips = [ip for ip, info in list(CONNECTED_DEVICES.items()) if now - info["time"] >= 300]
+        for ip in offline_ips:
+            if ip in CONNECTED_DEVICES:
+                del CONNECTED_DEVICES[ip]
+
+    def clear_all_devices(self):
+        CONNECTED_DEVICES.clear()
+
     def init_settings_tab(self):
         tab = ttk.Frame(self.notebook)
         self.notebook.add(tab, text="⚙️ 系统设置")
         f = ttk.Frame(tab, padding=20)
         f.pack(fill=BOTH, expand=True)
         self.var_close_hw = ttk.BooleanVar(value=ENABLE_CLOSE_HW)
+        self.var_enable_log = ttk.BooleanVar(value=ENABLE_LOGGING)
+        self.var_enable_headers = ttk.BooleanVar(value=ENABLE_LOG_HEADERS)
         ttk.Checkbutton(f, text="启用「关闭程序」特殊作业", variable=self.var_close_hw, bootstyle="round-toggle", command=self.toggle_setting).pack(anchor=W, pady=5)
-        
-        self.var_logging = ttk.BooleanVar(value=ENABLE_LOGGING)
-        ttk.Checkbutton(f, text="启用终端请求日志输出", variable=self.var_logging, bootstyle="round-toggle", command=self.toggle_setting).pack(anchor=W, pady=5)
-        
-        self.var_log_headers = ttk.BooleanVar(value=ENABLE_LOG_HEADERS)
-        ttk.Checkbutton(f, text="在终端日志中记录 Headers", variable=self.var_log_headers, bootstyle="round-toggle", command=self.toggle_setting).pack(anchor=W, padx=20, pady=5)
+        ttk.Checkbutton(f, text="启用面板请求日志输出", variable=self.var_enable_log, bootstyle="round-toggle", command=self.toggle_setting).pack(anchor=W, pady=5)
+        ttk.Checkbutton(f, text="日志中包含 HTTP Headers", variable=self.var_enable_headers, bootstyle="round-toggle", command=self.toggle_setting).pack(anchor=W, padx=20, pady=0)
 
     def toggle_setting(self):
         global ENABLE_CLOSE_HW, ENABLE_LOGGING, ENABLE_LOG_HEADERS
         ENABLE_CLOSE_HW = self.var_close_hw.get()
-        ENABLE_LOGGING = self.var_logging.get()
-        ENABLE_LOG_HEADERS = self.var_log_headers.get()
+        ENABLE_LOGGING = self.var_enable_log.get()
+        ENABLE_LOG_HEADERS = self.var_enable_headers.get()
 
     def init_resource_tab(self):
         tab = ttk.Frame(self.notebook)
@@ -446,9 +507,39 @@ class MockServerApp:
         self.var_scale.set(f"{int(fs * 100)}%")
         messagebox.showinfo("成功", "保存成功")
 
+    def init_log_tab(self):
+        tab = ttk.Frame(self.notebook)
+        self.notebook.add(tab, text="📄 运行日志")
+
+        tool_frame = ttk.Frame(tab, padding=5)
+        tool_frame.pack(fill=X)
+        ttk.Button(tool_frame, text="🗑️ 清空日志", command=self.clear_logs, bootstyle=DANGER).pack(side=LEFT)
+
+        self.log_text = Text(tab, state=DISABLED, bg="#ffffff", fg="#333333", font=("Consolas", 10))
+        scroll = ttk.Scrollbar(tab, command=self.log_text.yview)
+        self.log_text.configure(yscrollcommand=scroll.set)
+        
+        scroll.pack(side=RIGHT, fill=Y, pady=5)
+        self.log_text.pack(side=LEFT, fill=BOTH, expand=True, padx=5, pady=5)
+
+    def append_log(self, message):
+        self.root.after(0, self._safe_append_log, message)
+
+    def _safe_append_log(self, message):
+        self.log_text.config(state=NORMAL)
+        self.log_text.insert(END, message + "\n")
+        self.log_text.see(END)
+        self.log_text.config(state=DISABLED)
+
+    def clear_logs(self):
+        self.log_text.config(state=NORMAL)
+        self.log_text.delete("1.0", END)
+        self.log_text.config(state=DISABLED)
+
 if __name__ == "__main__":
     Thread(target=lambda: serve(app, host="0.0.0.0", port=2417), daemon=True).start()
     enable_high_dpi_awareness()
     root = ttk.Window(themename="litera")
     gui = MockServerApp(root)
+    gui_instance = gui
     root.mainloop()
